@@ -5,4 +5,4 @@ Description=Make sure repos are up to date
 User=admin
 Group=repomaint
 Type=simple
-ExecStart=/mnt/repodata/scripts/repo-updater.sh
+ExecStart=python /mnt/repodata/scripts/repo_mirror.py

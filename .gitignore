@@ -2,3 +2,4 @@ repo-updater.sh
 __pycache__/repo_dbmaint.cpython-39.pyc
 .gitignore
 .vscode/launch.json
+pushover.cfg

@@ -4,6 +4,7 @@ import json
 import subprocess
 import argparse
 import repo_dbmaint
+import repo_notify
 from threading import Thread
 from queue import Queue
 from pathlib import Path
@@ -84,7 +85,8 @@ def main():
         addedTotal += result
 
     if addedTotal > 0:
-        print("added files "+str(addedTotal))
+        notifyCommand = 'python repo_notify.py -s "pushover" -m "Added '+str(addedTotal)+' new packages."'
+        subprocess.run(notifyCommand, shell=True)
 
     print("Done")
 

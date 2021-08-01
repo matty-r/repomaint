@@ -24,7 +24,7 @@ def parseDB(databasePath: Path) -> str:
         readPkgCommand='tar xvf "'+pkgFilePath+'" .PKGINFO --to-command=cat'
         ## Add universal_newlines=True below to remove BYTES indicator if needed
         pkgInfoContents = subprocess.run(readPkgCommand, shell=True, stdout=subprocess.PIPE).stdout.splitlines()
-        newPackage = Package(pkgInfoContents)
+        newPackage = Package(pkgInfoContents, databaseName)
         availableFiles.append(newPackage)
 
     print("Repo directory contains " + str(len(availableFiles)) + " files.")
@@ -37,7 +37,7 @@ def parseDB(databasePath: Path) -> str:
         for tarinfo in dbFile:
             if tarinfo.isfile() and tarinfo.name.split('/')[1] == "desc":
                 descFileContents = dbFile.extractfile(tarinfo).readlines()
-                tarPackage = Package(descFileContents)
+                tarPackage = Package(descFileContents, databaseName)
                 databaseFiles.append(tarPackage)
     else:
         print("Database doesn't exist.")
@@ -54,10 +54,11 @@ def parseDB(databasePath: Path) -> str:
                     delFiles[file.name] = file.filename
                     print("Old package, remove "+file.filename+" from the database.")
                 elif file.builddate > dbFile.builddate:
+                    delFiles[dbFile.name] = dbFile.filename
+                    print("Old package, remove " + dbFile.filename+" from the database.")
                     keepFiles[file.name] = file.filename
                     print("Updated package, add " + file.filename+" into the database.")
-                elif file.builddate == dbFile.builddate:
-                    print("File already in the database, doing nothing.")
+
                 inDatabase = True
                 break
 
@@ -80,6 +81,7 @@ def parseDB(databasePath: Path) -> str:
     databaseCommand = 'repo-add "'+str(databasePath)+'"'
     maxCommandLength = int(int(subprocess.run('getconf ARG_MAX', shell=True, stdout=subprocess.PIPE,universal_newlines=True).stdout.splitlines()[0])/16)
     wasRun = False
+
     for file in keepFiles.keys():
         fileName = keepFiles[file]
         filePath = Path(str(rootFolder)+"/"+fileName).resolve()
@@ -97,17 +99,17 @@ def parseDB(databasePath: Path) -> str:
 
     if len(keepFiles) > 0 and not wasRun:
         subprocess.run(databaseCommand, shell=True)
+    
+    return len(keepFiles)
         
-
-
 class Package:
     # init values
     # filename, name, version, builddate
 
-    def __init__(self, pkginfo: list[bytes]):
-        self.parsePkgInfo(pkginfo)
+    def __init__(self, pkginfo: list[bytes], database):
+        self.parsePkgInfo(pkginfo, database)
 
-    def parsePkgInfo(self, pkginfo: list[bytes]):
+    def parsePkgInfo(self, pkginfo: list[bytes], database):
         try:
             name = str(pkginfo[pkginfo.index(b'%NAME%\n') + 1],
                        'UTF-8').split("\n")[0]
@@ -139,7 +141,7 @@ class Package:
         self.name = name
         self.version = version
         self.builddate = int(builddate)
-        print("Read Package - " + self.name)
+        print(database+": Read Package - " + self.name)
 
 
 if __name__ == "__main__":

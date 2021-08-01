@@ -1,0 +1,11 @@
+[unit]
+Description=Make sure repos are up to date (hourly)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1h
+Persistent=true
+Unit=repomaint.service
+
+[Install]
+WantedBy=timers.target

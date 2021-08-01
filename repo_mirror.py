@@ -4,7 +4,8 @@ import json
 import subprocess
 import argparse
 import repo_dbmaint
-import threading
+from threading import Thread
+from queue import Queue
 from pathlib import Path
 
 curl = pycurl.Curl()
@@ -57,22 +58,33 @@ def main():
     repos=["core","community","extra","multilib"]
     arch="x86_64"
     repoRoot=args['root']
+    threadQueue = Queue()
     threadList = []
 
     for repo in repos:
         downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
         databasePath = Path(repoRoot+'/'+downloadUrl.split(baseUrl)[1]+'/'+repo+'.db.tar.gz')
-        th = threading.Thread(target=repo_dbmaint.parseDB, args=([databasePath]))
-        threadList.append(th)
+
+        parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))
         downloadCommand = 'wget2 -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
         subprocess.run(downloadCommand, shell=True)
         ## add the db creation/parsing to a thread to do it in the background while the rest of the repos are mirrored
-        threadList[-1].start()
+
         print("Launch thread..")
+        parseDbThread.start()
+        threadList.append(parseDbThread)
     
     print("Waiting to finish up..")
-    for thread in threadList:
-        thread.join()
+    for dbThread in threadList:
+        dbThread.join()
+
+    addedTotal = 0
+    while not threadQueue.empty():
+        result = threadQueue.get()
+        addedTotal += result
+
+    if addedTotal > 0:
+        print("added files "+str(addedTotal))
 
     print("Done")
 

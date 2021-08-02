@@ -1,5 +1,5 @@
 repo-updater.sh
-__pycache__/repo_dbmaint.cpython-39.pyc
+__pycache__*
 .gitignore
-.vscode/launch.json
+.vscode*
 pushover.cfg

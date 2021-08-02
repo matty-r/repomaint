@@ -20,27 +20,29 @@ def parseDB(databasePath: Path) -> str:
     databaseName = databasePath.name
 
     availableFiles = []
-    for pkgFilePath in glob.glob(str(rootFolder)+"/*.pkg.tar.zst"):
+    
+    for pkgFilePath in glob.glob(str(rootFolder)+"/*.pkg.tar.*[!.sig]"):
         readPkgCommand='tar xvf "'+pkgFilePath+'" .PKGINFO --to-command=cat'
         ## Add universal_newlines=True below to remove BYTES indicator if needed
         pkgInfoContents = subprocess.run(readPkgCommand, shell=True, stdout=subprocess.PIPE).stdout.splitlines()
-        newPackage = Package(pkgInfoContents, databaseName)
+        pkgFileName = str(Path(pkgFilePath).name)
+        newPackage = Package(pkgInfoContents, databaseName, pkgFileName)
         availableFiles.append(newPackage)
 
-    print("Repo directory contains " + str(len(availableFiles)) + " files.")
+    print(databaseName+": Repo directory contains " + str(len(availableFiles)) + " files.")
 
     databaseFiles = []
     
     if Path.exists(databasePath):
-        print("Database exists, indexing..")
+        print(databaseName+": Database exists, indexing..")
         dbFile = tarfile.open(databasePath)
         for tarinfo in dbFile:
             if tarinfo.isfile() and tarinfo.name.split('/')[1] == "desc":
                 descFileContents = dbFile.extractfile(tarinfo).readlines()
-                tarPackage = Package(descFileContents, databaseName)
+                tarPackage = Package(pkginfo=descFileContents, database=databaseName, filename="")
                 databaseFiles.append(tarPackage)
     else:
-        print("Database doesn't exist.")
+        print(databaseName+": Database doesn't exist.")
 
     
     keepFiles = {}
@@ -52,23 +54,23 @@ def parseDB(databasePath: Path) -> str:
             if dbFile.name == file.name:
                 if file.builddate < dbFile.builddate:
                     delFiles[file.name] = file.filename
-                    print("Old package, remove "+file.filename+" from the database.")
+                    print(databaseName+": Old package, remove "+file.filename+" from the database.")
                 elif file.builddate > dbFile.builddate:
                     delFiles[dbFile.name] = dbFile.filename
-                    print("Old package, remove " + dbFile.filename+" from the database.")
+                    print(databaseName+": Old package, remove " + dbFile.filename+" from the database.")
                     keepFiles[file.name] = file.filename
-                    print("Updated package, add " + file.filename+" into the database.")
+                    print(databaseName+": Updated package, add " + file.filename+" into the database.")
 
                 inDatabase = True
                 break
 
         if not inDatabase:
             keepFiles[file.name] = file.filename
-            print("Will add " + file.filename+" into the database.")
+            print(databaseName+": Will add " + file.filename+" into the database.")
             
 
-    print("Adding " + str(len(keepFiles)) + " files.")
-    print("Deleting " + str(len(delFiles)) + " files.")
+    print(databaseName+": Adding " + str(len(keepFiles)) + " files.")
+    print(databaseName+": Deleting " + str(len(delFiles)) + " files.")
     
     for file in delFiles.keys():
         fileName = delFiles[file]
@@ -106,11 +108,13 @@ class Package:
     # init values
     # filename, name, version, builddate
 
-    def __init__(self, pkginfo: list[bytes], database):
-        self.parsePkgInfo(pkginfo, database)
+    def __init__(self, pkginfo: list[bytes], database, filename):
+        self.parsePkgInfo(pkginfo, database, filename)
 
-    def parsePkgInfo(self, pkginfo: list[bytes], database):
+    def parsePkgInfo(self, pkginfo: list[bytes], database, filename):
         try:
+            filename = str(pkginfo[pkginfo.index(b'%FILENAME%\n') + 1],
+                       'UTF-8').split("\n")[0]
             name = str(pkginfo[pkginfo.index(b'%NAME%\n') + 1],
                        'UTF-8').split("\n")[0]
             version = str(pkginfo[pkginfo.index(
@@ -118,7 +122,7 @@ class Package:
             builddate = str(pkginfo[pkginfo.index(
                 b'%BUILDDATE%\n') + 1], 'UTF-8').split("\n")[0]
             arch = str(pkginfo[pkginfo.index(b'%ARCH%\n') + 1],
-                       'UTF-8').split("\n")[0] #
+                       'UTF-8').split("\n")[0]
         except:
             valueList = {"name": "pkgname = ", "version": "pkgver = ",
                          "builddate": "builddate = ", "arch": "arch = "}
@@ -134,8 +138,6 @@ class Package:
             version = valueList["version"]
             builddate = valueList["builddate"]
             arch = valueList["arch"]
-
-        filename = name + "-" + version + "-" + arch + ".pkg.tar.zst"
 
         self.filename = filename
         self.name = name

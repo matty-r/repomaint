@@ -4,7 +4,6 @@ import json
 import subprocess
 import argparse
 import repo_dbmaint
-import repo_notify
 from threading import Thread
 from queue import Queue
 from pathlib import Path
@@ -15,7 +14,7 @@ b = BytesIO()
 # Construct an argument parser
 all_args = argparse.ArgumentParser()
 
-def main():
+def main():   
     # Add arguments to the parser
     all_args.add_argument("-r", "--root", required=True,
                         help="Path to the root repo directory which contains the repos /repo/path/")
@@ -65,7 +64,6 @@ def main():
     for repo in repos:
         downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
         databasePath = Path(repoRoot+'/'+downloadUrl.split(baseUrl)[1]+'/'+repo+'.db.tar.gz')
-
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))
         downloadCommand = 'wget2 -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
         subprocess.run(downloadCommand, shell=True)
@@ -85,7 +83,10 @@ def main():
         addedTotal += result
 
     if addedTotal > 0:
-        notifyCommand = 'python repo_notify.py -s "pushover" -m "Added '+str(addedTotal)+' new packages."'
+        print("New files added - run notify")
+        scriptPath = Path().resolve()
+        notifyCommand = 'python "'+str(scriptPath)+'/repo_notify.py" -s "pushover" -m "Added '+str(addedTotal)+' new packages."'
+        print(notifyCommand)
         subprocess.run(notifyCommand, shell=True)
 
     print("Done")

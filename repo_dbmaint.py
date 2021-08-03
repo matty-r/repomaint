@@ -75,10 +75,12 @@ def parseDB(databasePath: Path) -> str:
     for file in delFiles.keys():
         fileName = delFiles[file]
         filePath = Path(str(rootFolder)+"/"+fileName).resolve()
-        filePathSig = str(filePath)+".sig"
-        print("delete "+fileName)
-        os.remove(filePath)
-        os.remove(filePathSig)
+        filePathSig = Path(str(filePath)+".sig").resolve()
+        if(Path.exists(filePath)):
+            print("delete "+fileName)
+            os.remove(filePath)
+        if(Path.exists(filePathSig)):
+            os.remove(filePathSig)
     
     databaseCommand = 'repo-add "'+str(databasePath)+'"'
     maxCommandLength = int(int(subprocess.run('getconf ARG_MAX', shell=True, stdout=subprocess.PIPE,universal_newlines=True).stdout.splitlines()[0])/16)

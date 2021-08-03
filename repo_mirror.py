@@ -7,6 +7,7 @@ import repo_dbmaint
 from threading import Thread
 from queue import Queue
 from pathlib import Path
+import random
 
 curl = pycurl.Curl()
 b = BytesIO()
@@ -35,6 +36,9 @@ def main():
     for line in [i for i in str(b.getvalue(), 'UTF-8').splitlines() if i.__contains__('#Server = ')]:
         mirrorList.append(line.split('#Server = ')[1])
 
+    ## Shuffle the list so we're not always hitting the same server
+    random.shuffle(mirrorList)
+    
     mirrorToUse = ""
     mirrorDepth = 0
     for fullUrl in mirrorList:
@@ -63,9 +67,9 @@ def main():
 
     for repo in repos:
         downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
-        databasePath = Path(repoRoot+'/'+downloadUrl.split(baseUrl)[1]+'/'+repo+'.db.tar.gz')
+        databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))
-        downloadCommand = 'wget2 -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
+        downloadCommand = 'wget2 -e robots=off -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
         subprocess.run(downloadCommand, shell=True)
         ## add the db creation/parsing to a thread to do it in the background while the rest of the repos are mirrored
 

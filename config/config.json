@@ -8,13 +8,15 @@
     },
     "service_config" :{
         "notifiers": [
-            { "pushover" : {
-                    "enabled": "true",
+            { "notifier" : {
+                    "type": "pushover",
+                    "enabled": true,
                     "config": "/config/notifiers/pushover.json"
                 } 
             },
-            { "email" : {
-                    "enabled": "false"
+            { "notifier" : {
+                    "type": "email",
+                    "enabled": false
                 } 
             }
         ]

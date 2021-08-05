@@ -23,8 +23,8 @@ def main():
     if args['config']:
         services = json.load(open(args["config"]))["service_config"]["notifiers"]
         for service in services:
-            if service["enabled"]:
-                runNotifier(service, args['message'])
+            if service["notifier"]["enabled"]:
+                runNotifier(service["notifier"]["type"], args['message'])
     else:
         runNotifier(args['service'], args['message'])
 

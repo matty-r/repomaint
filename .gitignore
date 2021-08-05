@@ -1,5 +1,4 @@
-repo-updater.sh
 __pycache__*
-.gitignore
 .vscode*
-pushover.cfg
+.gitignore
+/config/notifiers/*

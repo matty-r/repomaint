@@ -17,9 +17,14 @@ all_args = argparse.ArgumentParser()
 
 def main():   
     # Add arguments to the parser
-    all_args.add_argument("-r", "--root", required=True,
-                        help="Path to the root repo directory which contains the repos /repo/path/")
+    all_args.add_argument("-c", "--config", required=True,
+                        help="Path to the config file which contains the appropriate settings")
     args = vars(all_args.parse_args())
+
+    repoRoot = Path(json.load(open(args["config"]))["maint_config"]["repo_root"])
+    if not repoRoot.exists():
+        print(str(repoRoot.resolve()) +" doesn't exist. Check config.json.")
+        exit
 
     curl.setopt(curl.URL, 'icanhazip.com')
     curl.setopt(curl.WRITEDATA, b)
@@ -29,7 +34,7 @@ def main():
     curl.perform()
     response = json.loads(str(b.getvalue(), 'UTF-8').splitlines()[1])
     print("Country Code: "+response["countryCode"])
-    mirrorListURL = 'https://archlinux.org/mirrorlist/?country='+response["countryCode"]+'&protocol=http&ip_version=4'
+    mirrorListURL = 'https://archlinux.org/mirrorlist/?country='+response["countryCode"]+'&protocol=http&protocol=https&ip_version=4'
     curl.setopt(curl.URL, mirrorListURL)
     curl.perform()
     mirrorList = []
@@ -42,7 +47,7 @@ def main():
     mirrorToUse = ""
     mirrorDepth = 0
     for fullUrl in mirrorList:
-        baseUrl = fullUrl.split('http://')[1].split('/')[0]
+        baseUrl = fullUrl.split('://')[1].split('/')[0]
         print('Trying '+baseUrl)
         curl.setopt(curl.URL, baseUrl)
         curl.perform()
@@ -59,13 +64,13 @@ def main():
         print("Exiting...")
         exit
 
-    repos=["core","community","extra","multilib"]
+    webMirrorRepos=["core","community","extra","multilib"]
     arch="x86_64"
-    repoRoot=args['root']
+
     threadQueue = Queue()
     threadList = []
-
-    for repo in repos:
+    repoRoot = str(repoRoot.resolve())
+    for repo in webMirrorRepos:
         downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
         databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))

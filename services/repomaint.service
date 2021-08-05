@@ -1,0 +1,9 @@
+[Unit]
+Description=Make sure repos are up to date
+
+[Service]
+User=admin
+Group=repomaint
+Type=simple
+WorkingDirectory=/mnt/repodata/scripts/
+ExecStart=python ./src/repo_mirror.py -c "/mnt/repodata/scripts/config/config.json"

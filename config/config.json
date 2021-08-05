@@ -1,0 +1,60 @@
+{
+    "name":"main",
+    "version": "1.0",
+    "maint_config" : {
+        "repo_root": "/mnt/repodata/repos",
+        "remote_repos" : [ "community", "core", "multilib", "extra"],
+        "local_repos" : [ "myaur" ]
+    },
+    "service_config" :{
+        "notifiers": [
+            { "pushover" : {
+                    "enabled": "true",
+                    "config": "/config/notifiers/pushover.json"
+                } 
+            },
+            { "email" : {
+                    "enabled": "false"
+                } 
+            }
+        ]
+    },
+    "mirror_config" : {
+        "method": "auto",
+        "auto" : {
+            "refresh_hours": "12",
+            "generator_url": {
+                "base" : "https://archlinux.org/mirrorlist",
+                "country_code" : "geoip",
+                "protocols" : {
+                    "http": true,
+                    "https": true
+                },
+                "ip_versions": {
+                    "v4": true,
+                    "v6": false
+                },
+                "mirror_status": false
+            }
+        },
+        "manual": {
+            "servers": [
+                { "server": "https://mirror.aarnet.edu.au/pub/archlinux/$repo/os/$arch"},
+                { "server": "http://archlinux.mirror.digitalpacific.com.au/$repo/os/$arch"},
+                { "server": "https://archlinux.mirror.digitalpacific.com.au/$repo/os/$arch"},
+                { "server": "http://ftp.iinet.net.au/pub/archlinux/$repo/os/$arch"},
+                { "server": "http://mirror.internode.on.net/pub/archlinux/$repo/os/$arch"},
+                { "server": "http://mirror.launtel.net.au/repo/arch/$repo/os/$arch"},
+                { "server": "https://mirror.launtel.net.au/repo/arch/$repo/os/$arch"},
+                { "server": "http://arch.lucassymons.net/$repo/os/$arch"},
+                { "server": "https://arch.lucassymons.net/$repo/os/$arch"},
+                { "server": "http://syd.mirror.rackspace.com/archlinux/$repo/os/$arch"},
+                { "server": "https://syd.mirror.rackspace.com/archlinux/$repo/os/$arch"},
+                { "server": "http://ftp.swin.edu.au/archlinux/$repo/os/$arch"}
+            ]
+        }
+    }
+}
+
+
+

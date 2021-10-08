@@ -68,7 +68,6 @@ def parseDB(databasePath: Path) -> str:
             keepFiles[file.name] = file.filename
             print(databaseName+": Will add " + file.filename+" into the database.")
             
-
     print(databaseName+": Adding " + str(len(keepFiles)) + " files.")
     print(databaseName+": Deleting " + str(len(delFiles)) + " files.")
     

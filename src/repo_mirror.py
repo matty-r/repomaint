@@ -79,22 +79,35 @@ def main():
         print("Exiting...")
         exit
 
-    webMirrorRepos=configFile["maint_config"]["remote_repos"]
+    # Get all the repos and add them to the allRepos dict. with the value being the type of repo it is.
+    allRepos=dict.fromkeys(configFile["maint_config"]["remote_repos"],"remote")
+    allRepos.update(dict.fromkeys(configFile["maint_config"]["local_repos"],"local"))
+
     arch="x86_64"
 
     threadQueue = Queue()
     threadList = []
     repoRoot = str(repoRoot.resolve())
-    for repo in webMirrorRepos:
-        downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
-        databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
+    commandList = []
+
+    for repo,type in allRepos.items():
+        if type == "local":
+           runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --noview --noconfirm'
+           databasePath = Path(repoRoot+'/'+repo+'/'+repo+'.db.tar.gz')
+        else:
+           downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
+           databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
+           runCommand = 'wget2 -e robots=off -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
+
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))
-        downloadCommand = 'wget2 -e robots=off -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
-        subprocess.run(downloadCommand, shell=True)
-        ## add the db creation/parsing to a thread to do it in the background while the rest of the repos are mirrored
-        print("Launch thread..")
-        parseDbThread.start()
+        commandList.append(runCommand)
         threadList.append(parseDbThread)
+
+    for command in commandList:
+        subprocess.run(command, shell=True)
+
+    for thread in threadList:
+        thread.start()
     
     print("Waiting to finish up..")
     for dbThread in threadList:

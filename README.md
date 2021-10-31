@@ -25,6 +25,8 @@ Maintain a local Arch Linux repository
 
 - Put this repo and it's scripts in /mnt/repodata/scripts
 
+- Modify config.json with the appropriate settings you require
+
 - Add repomaint.server and repomaint.timer to /etc/systemd/system, then enable the timer.
     - sudo systemctl start repomaint.timer
     - sudo systemctl enable repomaint.timer

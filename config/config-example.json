@@ -3,14 +3,14 @@
     "version": "1.0",
     "maint_config" : {
         "repo_root": "/mnt/repodata/repos",
-        "remote_repos" : [ "core" ],
+        "remote_repos" : [ "community", "core", "multilib", "extra"],
         "local_repos" : [ "myaur" ]
     },
     "service_config" :{
         "notifiers": [
             { "notifier" : {
                     "type": "pushover",
-                    "enabled": true,
+                    "enabled": false,
                     "config": "/config/notifiers/pushover.json"
                 } 
             },

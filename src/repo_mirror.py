@@ -13,6 +13,7 @@ import sys
 curl = pycurl.Curl()
 b = BytesIO()
 curl.setopt(curl.WRITEDATA, b)
+curl.setopt(curl.CONNECTTIMEOUT, 10)
 
 # Construct an argument parser
 all_args = argparse.ArgumentParser()
@@ -28,7 +29,9 @@ def main():
     if not repoRoot.exists():
         print(str(repoRoot.resolve()) +" doesn't exist. Check config.json.")
         exit
-
+    
+    mirrorList = []
+    
     if configFile['mirror_config']["method"] == "auto":
         if configFile['mirror_config']["auto"]["generator"]["country_code"] == "geoip":
             curl.setopt(curl.URL, 'icanhazip.com')
@@ -46,15 +49,14 @@ def main():
         enabledProtocols = "&protocol="+"&protocol=".join([i for i in protocols if protocols[i] == True])
         enabledIPVersions = "&ip_version="+"&ip_version=".join([i for i in ipVersions if ipVersions[i] == True])
         useMirrorStatus = ("&use_mirror_status=on" if configFile['mirror_config']["auto"]["generator"]["use_mirror_status"] == "on" else "")
-
         mirrorListURL = configFile['mirror_config']["auto"]["generator"]["url"]+countryCode+enabledProtocols+enabledIPVersions+useMirrorStatus
         curl.setopt(curl.URL, mirrorListURL)
         curl.perform()
-        mirrorList = []
         for line in [i for i in str(b.getvalue(), 'UTF-8').splitlines() if i.__contains__('#Server = ')]:
             mirrorList.append(line.split('#Server = ')[1])
     else:
-        mirrorList = configFile['mirror_config']["method"]["manual"]["servers"]["server"]
+        for server in configFile['mirror_config']["manual"]["servers"]:
+            mirrorList.append(server["server"])
 
     ## Shuffle the list so we're not always hitting the same server
     random.shuffle(mirrorList)
@@ -65,8 +67,16 @@ def main():
         baseUrl = fullUrl.split('://')[1].split('/')[0]
         print('Trying '+baseUrl)
         curl.setopt(curl.URL, baseUrl)
-        curl.perform()
-        if curl.getinfo(pycurl.RESPONSE_CODE) == 200:
+        try:
+            curl.perform()
+        except:
+            print('Problem retrieving URL, skipping..')
+            continue
+        
+        curlResponse = curl.getinfo(pycurl.RESPONSE_CODE)
+        print('Response:'+str(curlResponse))
+        
+        if curlResponse == 200:
             print('Got reponse')
             mirrorToUse = fullUrl
             mirrorDepth = fullUrl.split('/$repo')[0].count('/')-2

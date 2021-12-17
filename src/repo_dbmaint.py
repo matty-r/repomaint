@@ -21,13 +21,19 @@ def parseDB(databasePath: Path) -> str:
 
     availableFiles = []
     
+
     for pkgFilePath in glob.glob(str(rootFolder)+"/*.pkg.tar.*[!.sig]"):
         readPkgCommand='tar xvf "'+pkgFilePath+'" .PKGINFO --to-command=cat'
         ## Add universal_newlines=True below to remove BYTES indicator if needed
         pkgInfoContents = subprocess.run(readPkgCommand, shell=True, stdout=subprocess.PIPE).stdout.splitlines()
         pkgFileName = str(Path(pkgFilePath).name)
-        newPackage = Package(pkgInfoContents, databaseName, pkgFileName)
-        availableFiles.append(newPackage)
+        try:
+            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath))
+            availableFiles.append(newPackage)
+        except:
+            if(Path.exists(Path(pkgFilePath))):
+                print("Invalid package.. delete it")
+                os.remove(pkgFilePath)
 
     print(databaseName+": Repo directory contains " + str(len(availableFiles)) + " files.")
 
@@ -47,7 +53,7 @@ def parseDB(databasePath: Path) -> str:
     
     keepFiles = {}
     delFiles = {}
-    
+
     for file in availableFiles:
         inDatabase = False
         for dbFile in databaseFiles:
@@ -104,13 +110,22 @@ def parseDB(databasePath: Path) -> str:
         subprocess.run(databaseCommand, shell=True)
     
     return len(keepFiles)
-        
+
+
 class Package:
     # init values
     # filename, name, version, builddate
 
-    def __init__(self, pkginfo: list[bytes], database, filename):
+    def __init__(self, pkginfo: list[bytes], database, filename, fullPath):
+        self.fullPath = str(fullPath)
         self.parsePkgInfo(pkginfo, database, filename)
+
+    def verify(self):
+        verifyCommand='pacman-key --verify "'+self.fullPath+'.sig" "'+self.fullPath+'"'
+        ## verifyCommand='pacman-key --verify "/mnt/repodata/repos/extra/os/x86_64/garcon-4.16.1-1-x86_64.pkg.tar.zst.sig" "/mnt/repodata/repos/extra/os/x86_64/zsh-5.8-1-x86_64.pkg.tar.zst"'
+        ## this throws an error if it can't verify it with the signature.
+        ## also hide the output from the verify command.
+        subprocess.run(verifyCommand, shell=True, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT).check_returncode()
 
     def parsePkgInfo(self, pkginfo: list[bytes], database, filename):
         try:
@@ -144,6 +159,7 @@ class Package:
         self.name = name
         self.version = version
         self.builddate = int(builddate)
+        self.verify()
         print(database+": Read Package - " + self.name)
 
 

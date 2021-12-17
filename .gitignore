@@ -3,3 +3,4 @@ __pycache__*
 .gitignore
 /config/notifiers/*
 config/config.json
+config/config-test.json

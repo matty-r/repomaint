@@ -107,7 +107,7 @@ def main():
         else:
            downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
            databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
-           runCommand = 'wget2 -e robots=off -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
+           runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
 
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))
         commandList.append(runCommand)

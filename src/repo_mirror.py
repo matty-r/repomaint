@@ -85,13 +85,17 @@ def main():
             break
     
     if mirrorToUse == "":
-        print("Something went wrong, got no reponses.")
+        print("Something went wrong, got no responses.")
         print("Exiting...")
         exit
 
     # Get all the repos and add them to the allRepos dict. with the value being the type of repo it is.
     allRepos=dict.fromkeys(configFile["maint_config"]["remote_repos"],"remote")
-    allRepos.update(dict.fromkeys(configFile["maint_config"]["local_repos"],"local"))
+
+    try:
+        allRepos.update(dict.fromkeys(configFile["maint_config"]["local_repos"],"local"))
+    except:
+        print("Local repo not specified")
 
     arch="x86_64"
 
@@ -101,15 +105,20 @@ def main():
     commandList = []
 
     for repo,type in allRepos.items():
+        ignoreVerify = False
+
         if type == "local":
            runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --noview --noconfirm'
            databasePath = Path(repoRoot+'/'+repo+'/'+repo+'.db.tar.gz')
+           ignoreVerify = True
         else:
            downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
            databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
            runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
+           ignoreVerify = False
 
-        parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))
+        ## parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))
+        parseDbThread = Thread(name="Thread-"+repo,target=repo_dbmaint.parseDB,args=(databasePath, ignoreVerify))
         commandList.append(runCommand)
         threadList.append(parseDbThread)
 

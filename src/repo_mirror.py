@@ -117,8 +117,7 @@ def main():
            runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
            ignoreVerify = False
 
-        ## parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1: q.put(repo_dbmaint.parseDB(arg1)), args=(threadQueue, databasePath))
-        parseDbThread = Thread(name="Thread-"+repo,target=repo_dbmaint.parseDB,args=(databasePath, ignoreVerify))
+        parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1,arg2: q.put(repo_dbmaint.parseDB(arg1,arg2)), args=(threadQueue, databasePath,ignoreVerify))
         commandList.append(runCommand)
         threadList.append(parseDbThread)
 

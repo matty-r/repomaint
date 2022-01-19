@@ -11,7 +11,7 @@ all_args = argparse.ArgumentParser()
 def main():
     # Add arguments to the parser
     all_args.add_argument("-db", "--database", required=True,
-                        help="Patch to the database file /my/path/core.db.tar.gz")
+                        help="Path to the database file /my/path/core.db.tar.gz")
     args = vars(all_args.parse_args())
     parseDB(Path(args['database']))
 

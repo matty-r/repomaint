@@ -19,30 +19,35 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
     rootFolder = Path(databasePath.parent)
     databaseName = databasePath.name
 
-    availableFiles = []
-    
+    availableFiles = {}
+    keepFiles = {}
+    delFiles = {}
 
-    for pkgFilePath in glob.glob(str(rootFolder)+"/*.pkg.tar.*[!.sig]"):
+    filePaths=sorted(glob.glob(str(rootFolder)+"/*.pkg.tar.*[!.sig]"))
+
+    for pkgFilePath in filePaths:
         readPkgCommand='tar xvf "'+pkgFilePath+'" .PKGINFO --to-command=cat'
         ## Add universal_newlines=True below to remove BYTES indicator if needed
         pkgInfoContents = subprocess.run(readPkgCommand, shell=True, stdout=subprocess.PIPE).stdout.splitlines()
         pkgFileName = str(Path(pkgFilePath).name)
         try:
-            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath))
-            if ignoreVerify:
-                newPackage.verified = True
-
-            availableFiles.append(newPackage)
+            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath), ignoreVerify)
+            if newPackage.name not in availableFiles.keys():
+                availableFiles[newPackage.name] = newPackage
+            else:
+                if availableFiles[newPackage.name].builddate < newPackage.builddate:
+                    delFiles[availableFiles[newPackage.name].filename] = availableFiles[newPackage.name].filename
+                    availableFiles[newPackage.name] = newPackage
+                    
         except:
             if(Path.exists(Path(pkgFilePath))):
                 print("Invalid package.. delete it")
                 os.remove(pkgFilePath)
 
-    print(databaseName+": Repo directory contains " + str(len(availableFiles)) + " files.")
+    print(databaseName+": Repo directory contains " + str(len(availableFiles)) + " unique packages.")
 
     databaseFiles = []
-    keepFiles = {}
-    delFiles = {}
+   
 
     if Path.exists(databasePath):
         print(databaseName+": Database exists, indexing..")
@@ -50,30 +55,32 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
         for tarinfo in dbFile:
             if tarinfo.isfile() and tarinfo.name.split('/')[1] == "desc":
                 descFileContents = dbFile.extractfile(tarinfo).readlines()
-                tarPackage = Package(pkginfo=descFileContents, database=databaseName, filename="", fullPath=Path(databasePath))
-                if ignoreVerify:
-                    tarPackage.verified = True
-                    
+                # don't verify because all files that exist in the directory have already been verified
+                tarPackage = Package(pkginfo=descFileContents, database=databaseName, filename="", fullPath=Path(databasePath), ignoreVerify=True)
+                ## Debug
+                # if "xmobar" in tarPackage.name:
                 databaseFiles.append(tarPackage)
     else:
         print(databaseName+": Database doesn't exist.")
 
     for file in databaseFiles:
         if not Path.exists(Path(file.fullPath)):
-            delFiles[file.name] = file.filename
+            delFiles[file.filename] = file.filename
 
-    for file in availableFiles:
+
+
+    for file in availableFiles.values():
         inDatabase = False
         if not file.verified:
-            delFiles[file.name] = file.filename
+            delFiles[file.filename] = file.filename
         else :
             for dbFile in databaseFiles:
                 if dbFile.name == file.name:
                     if file.builddate < dbFile.builddate:
-                        delFiles[file.name] = file.filename
+                        delFiles[file.filename] = file.filename
                         print(databaseName+": Old package, remove "+file.filename+" from the database.")
                     elif file.builddate > dbFile.builddate:
-                        delFiles[dbFile.name] = dbFile.filename
+                        delFiles[dbFile.filename] = dbFile.filename
                         print(databaseName+": Old package, remove " + dbFile.filename+" from the database.")
                         keepFiles[file.name] = file.filename
                         print(databaseName+": Updated package, add " + file.filename+" into the database.")
@@ -92,11 +99,29 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
     maxCommandLength = int(int(subprocess.run('getconf ARG_MAX', shell=True, stdout=subprocess.PIPE,universal_newlines=True).stdout.splitlines()[0])/16)
     wasRun = False
 
+    # Clean up the database
+    for file in delFiles.keys():
+        tempCommand = databaseRemCommand + ' "'+str(file)+'"'
+
+        # Consolidate the repo-remove command to save time
+        if len(tempCommand) > maxCommandLength:
+            subprocess.run(databaseRemCommand, shell=True)
+            # Restart the databaseRemCommand
+            databaseRemCommand = 'repo-remove "'+str(databasePath)+ '" "'+str(file)+'"'
+            wasRun = True
+        else:
+            databaseRemCommand = tempCommand
+            wasRun = False
+    
+    # Run the repo-remove command if it hasn't been run yet
+    if len(delFiles) > 0 and not wasRun:
+        subprocess.run(databaseRemCommand, shell=True)
+
+    # Delete the actual files from the system now, if they're still there
     for file in delFiles.keys():
         fileName = delFiles[file]
         filePath = Path(str(rootFolder)+"/"+fileName).resolve()
         filePathSig = Path(str(filePath)+".sig").resolve()
-        tempCommand = databaseRemCommand + ' "'+str(file)+'"'
 
         if(Path.exists(filePath)):
             print("delete "+fileName)
@@ -104,18 +129,6 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
 
         if(Path.exists(filePathSig)):
             os.remove(filePathSig)
-
-        if len(tempCommand) > maxCommandLength:
-            subprocess.run(databaseRemCommand, shell=True)
-            # Restart the databseCommand
-            databaseRemCommand = 'repo-remove "'+str(databasePath)+ '" "'+str(file)+'"'
-            wasRun = True
-        else:
-            databaseRemCommand = tempCommand
-            wasRun = False
-    
-    if len(delFiles) > 0 and not wasRun:
-        subprocess.run(databaseRemCommand, shell=True)
     
     databaseAddCommand = 'repo-add "'+str(databasePath)+'"'
     
@@ -146,14 +159,17 @@ class Package:
     # init values
     # filename, name, version, builddate, fullPath, verified
 
-    def __init__(self, pkginfo: list[bytes], database, filename, fullPath):
+    def __init__(self, pkginfo: list[bytes], database, filename, fullPath, ignoreVerify):
         self.fullPath = str(fullPath)
-        self.verified = False
+        if ignoreVerify:
+            self.verified = True
+        else :
+            self.verified = False
+            self.verify()
         self.parsePkgInfo(pkginfo, database, filename)
 
     def verify(self):
         verifyCommand='pacman-key --verify "'+self.fullPath+'.sig" "'+self.fullPath+'"'
-        ## verifyCommand='pacman-key --verify "/mnt/repodata/repos/extra/os/x86_64/garcon-4.16.1-1-x86_64.pkg.tar.zst.sig" "/mnt/repodata/repos/extra/os/x86_64/zsh-5.8-1-x86_64.pkg.tar.zst"'
         ## this throws an error if it can't verify it with the signature.
         ## also hide the output from the verify command.
         try:
@@ -197,7 +213,6 @@ class Package:
         self.builddate = int(builddate)
         self.fullPath = self.fullPath.replace(database,filename)
         print(database+": Read Package - " + self.name)
-        self.verify()
             
 
 

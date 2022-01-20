@@ -25,7 +25,7 @@ def main():
     args = vars(all_args.parse_args())
     configFile = json.load(open(args["config"]))
     repoRoot = Path(configFile["maint_config"]["repo_root"])
-
+    print("Version 1.0")
     if not repoRoot.exists():
         print(str(repoRoot.resolve()) +" doesn't exist. Check config.json.")
         exit
@@ -60,35 +60,7 @@ def main():
 
     ## Shuffle the list so we're not always hitting the same server
     random.shuffle(mirrorList)
-    
-    mirrorToUse = ""
-    mirrorDepth = 0
-    for fullUrl in mirrorList:
-        baseUrl = fullUrl.split('://')[1].split('/')[0]
-        print('Trying '+baseUrl)
-        curl.setopt(curl.URL, baseUrl)
-        try:
-            curl.perform()
-        except:
-            print('Problem retrieving URL, skipping..')
-            continue
-        
-        curlResponse = curl.getinfo(pycurl.RESPONSE_CODE)
-        print('Response:'+str(curlResponse))
-        
-        if curlResponse == 200:
-            print('Got reponse')
-            mirrorToUse = fullUrl
-            mirrorDepth = fullUrl.split('/$repo')[0].count('/')-2
-            print("Mirror "+mirrorToUse)
-            print("Depth "+str(mirrorDepth))
-            break
-    
-    if mirrorToUse == "":
-        print("Something went wrong, got no responses.")
-        print("Exiting...")
-        exit
-
+    arch="x86_64"
     # Get all the repos and add them to the allRepos dict. with the value being the type of repo it is.
     allRepos=dict.fromkeys(configFile["maint_config"]["remote_repos"],"remote")
 
@@ -97,7 +69,43 @@ def main():
     except:
         print("Local repo not specified")
 
-    arch="x86_64"
+    mirrorToUse = ""
+    mirrorDepth = 0
+    for fullUrl in mirrorList:
+        # baseUrl = fullUrl.split('://')[1].split('/')[0]
+        curlResults = True
+        for repo,type in allRepos.items():
+            baseUrl = fullUrl.replace('$arch',arch).replace('$repo',repo)
+            print('Trying '+baseUrl)
+            curl.setopt(curl.FOLLOWLOCATION, True)
+            curl.setopt(curl.URL, baseUrl)
+            try:
+                curl.perform()
+            except:
+                print('Problem retrieving URL, skipping..')
+                break
+            
+            curlResponse = curl.getinfo(pycurl.RESPONSE_CODE)
+            print('Response: '+str(curlResponse)+' for '+repo)
+            if curlResponse != 200:
+                curlResults = False
+                break
+        
+        if curlResults:
+            print('Got reponse')
+
+            mirrorToUse = fullUrl
+            mirrorDepth = fullUrl.split('/$repo')[0].count('/')-2
+            print("Mirror "+mirrorToUse)
+            print("Depth "+str(mirrorDepth))
+            break
+        else:
+            continue
+    
+    if mirrorToUse == "":
+        print("Something went wrong, got no responses.")
+        print("Exiting...")
+        exit
 
     threadQueue = Queue()
     threadList = []
@@ -137,7 +145,6 @@ def main():
         result = threadQueue.get()
         addedTotal += result
 
-    
     if addedTotal > 0:
         print("New files added - run notify")
         scriptPath = Path(sys.argv[0]).parent.resolve()

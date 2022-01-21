@@ -75,21 +75,22 @@ def main():
         # baseUrl = fullUrl.split('://')[1].split('/')[0]
         curlResults = True
         for repo,type in allRepos.items():
-            baseUrl = fullUrl.replace('$arch',arch).replace('$repo',repo)
-            print('Trying '+baseUrl)
-            curl.setopt(curl.FOLLOWLOCATION, True)
-            curl.setopt(curl.URL, baseUrl)
-            try:
-                curl.perform()
-            except:
-                print('Problem retrieving URL, skipping..')
-                break
-            
-            curlResponse = curl.getinfo(pycurl.RESPONSE_CODE)
-            print('Response: '+str(curlResponse)+' for '+repo)
-            if curlResponse != 200:
-                curlResults = False
-                break
+            if type == "remote":
+                baseUrl = fullUrl.replace('$arch',arch).replace('$repo',repo)
+                print('Trying '+baseUrl)
+                curl.setopt(curl.FOLLOWLOCATION, True)
+                curl.setopt(curl.URL, baseUrl)
+                try:
+                    curl.perform()
+                except:
+                    print('Problem retrieving URL, skipping..')
+                    break
+                
+                curlResponse = curl.getinfo(pycurl.RESPONSE_CODE)
+                print('Response: '+str(curlResponse)+' for '+repo)
+                if curlResponse != 200:
+                    curlResults = False
+                    break
         
         if curlResults:
             print('Got reponse')

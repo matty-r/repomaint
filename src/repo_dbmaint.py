@@ -25,13 +25,30 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
 
     filePaths=sorted(glob.glob(str(rootFolder)+"/*.pkg.tar.*[!.sig]"))
 
+    ## Quick verify of database
+    databaseReady = False
+    print("Checking that the database is valid and not corrupt.")
+    databaseCheckCommand = 'repo-add "'+str(databasePath)+'"'
+    checkError = subprocess.run(databaseCheckCommand, shell=True, universal_newlines=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE).stderr.splitlines()
+
+    if len(checkError) <= 0:
+        print("Database is GOOD!")
+        databaseReady = True
+    else:
+        print("Database is BAD :(, rebuild required.")
+
+        deleteFiles = glob.glob(str(rootFolder)+"/"+databaseName.split(".db.")[0]+"*")
+        for file in deleteFiles:
+            if os.path.exists(file) :
+                os.remove(file)
+
     for pkgFilePath in filePaths:
         readPkgCommand='tar xvf "'+pkgFilePath+'" .PKGINFO --to-command=cat'
         ## Add universal_newlines=True below to remove BYTES indicator if needed
         pkgInfoContents = subprocess.run(readPkgCommand, shell=True, stdout=subprocess.PIPE).stdout.splitlines()
         pkgFileName = str(Path(pkgFilePath).name)
         try:
-            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath), ignoreVerify)
+            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath), True)
             if newPackage.name not in availableFiles.keys():
                 availableFiles[newPackage.name] = newPackage
             else:
@@ -48,25 +65,24 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
 
     databaseFiles = []
    
+    if databaseReady:
+        if Path.exists(databasePath):
+            print(databaseName+": Database exists, indexing..")
+            dbFile = tarfile.open(databasePath)
+            for tarinfo in dbFile:
+                if tarinfo.isfile() and tarinfo.name.split('/')[1] == "desc":
+                    descFileContents = dbFile.extractfile(tarinfo).readlines()
+                    # don't verify because all files that exist in the directory have already been verified
+                    tarPackage = Package(pkginfo=descFileContents, database=databaseName, filename="", fullPath=Path(databasePath), ignoreVerify=True)
+                    ## Debug
+                    # if "xmobar" in tarPackage.name:
+                    databaseFiles.append(tarPackage)
+        else:
+            print(databaseName+": Database doesn't exist.")
 
-    if Path.exists(databasePath):
-        print(databaseName+": Database exists, indexing..")
-        dbFile = tarfile.open(databasePath)
-        for tarinfo in dbFile:
-            if tarinfo.isfile() and tarinfo.name.split('/')[1] == "desc":
-                descFileContents = dbFile.extractfile(tarinfo).readlines()
-                # don't verify because all files that exist in the directory have already been verified
-                tarPackage = Package(pkginfo=descFileContents, database=databaseName, filename="", fullPath=Path(databasePath), ignoreVerify=True)
-                ## Debug
-                # if "xmobar" in tarPackage.name:
-                databaseFiles.append(tarPackage)
-    else:
-        print(databaseName+": Database doesn't exist.")
-
-    for file in databaseFiles:
-        if not Path.exists(Path(file.fullPath)):
-            delFiles[file.filename] = file.filename
-
+        for file in databaseFiles:
+            if not Path.exists(Path(file.fullPath)):
+                delFiles[file.filename] = file.filename
 
 
     for file in availableFiles.values():

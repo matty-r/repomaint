@@ -33,6 +33,5 @@ Maintain a local Arch Linux repository
 
 ## TODO
 
-- Sometimes an orphaned package (replaced with a new version) requires multiple passes to clean up. Make this better.
 - Add rsync method - https://gitlab.archlinux.org/archlinux/infrastructure/-/blob/master/roles/syncrepo/files/syncrepo-template.sh
     -   rsync url found - https://archlinux.org/mirrors/

@@ -48,7 +48,7 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
         pkgInfoContents = subprocess.run(readPkgCommand, shell=True, stdout=subprocess.PIPE).stdout.splitlines()
         pkgFileName = str(Path(pkgFilePath).name)
         try:
-            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath), True)
+            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath), ignoreVerify=ignoreVerify)
             if newPackage.name not in availableFiles.keys():
                 availableFiles[newPackage.name] = newPackage
             else:
@@ -89,6 +89,7 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
         inDatabase = False
         if not file.verified:
             delFiles[file.filename] = file.filename
+            continue
         else :
             for dbFile in databaseFiles:
                 if dbFile.name == file.name:
@@ -167,8 +168,12 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
 
     if len(keepFiles) > 0 and not wasRun:
         subprocess.run(databaseAddCommand, shell=True)
+
+    keepFilesString = "\n".join(str(x) for x in keepFiles.keys())
+    delFilesString = "\n".join(str(x) for x in delFiles.keys())
+    returnArray = [len(keepFiles),keepFilesString , len(delFiles), delFilesString ]
     
-    return len(keepFiles)
+    return returnArray
 
 
 class Package:

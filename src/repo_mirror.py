@@ -141,15 +141,21 @@ def main():
         dbThread.join()
 
     addedTotal = 0
+    addedPackages = ""
+    removedTotal = 0
+    removedPackages = ""
 
     while not threadQueue.empty():
         result = threadQueue.get()
-        addedTotal += result
+        addedTotal += result[0]
+        addedPackages += result[1]
+        removedTotal += result[2]
+        removedPackages += result[3]
 
     if addedTotal > 0:
         print("New files added - run notify")
         scriptPath = Path(sys.argv[0]).parent.resolve()
-        notifyCommand = 'python "'+str(scriptPath)+'/repo_notify.py" -c "'+args["config"]+'" -m "Added '+str(addedTotal)+' new packages."'
+        notifyCommand = 'python "'+str(scriptPath)+'/repo_notify.py" -c "'+args["config"]+'" -m "Added '+str(addedTotal)+' new packages.\n' + addedPackages + '"'
         print(notifyCommand)
         subprocess.run(notifyCommand, shell=True)
     

@@ -169,7 +169,7 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
     if len(keepFiles) > 0 and not wasRun:
         subprocess.run(databaseAddCommand, shell=True)
 
-    reDownload = True
+    reDownload = False
 
     for file in availableFiles:
         if not availableFiles[file].verified:

@@ -1,4 +1,5 @@
-
+from ast import Constant
+from typing import Any
 import pycurl
 from io import BytesIO
 import json
@@ -18,21 +19,13 @@ curl.setopt(curl.CONNECTTIMEOUT, 10)
 
 # Construct an argument parser
 all_args = argparse.ArgumentParser()
+ARCH="x86_64"
 
-def main():   
-    # Add arguments to the parser
-    all_args.add_argument("-c", "--config", required=True,
-                        help="Path to the config file which contains the appropriate settings")
-    args = vars(all_args.parse_args())
-    configFile = json.load(open(args["config"]))
-    repoRoot = Path(configFile["maint_config"]["repo_root"])
-    print("Version 1.0")
-    if not repoRoot.exists():
-        print(str(repoRoot.resolve()) +" doesn't exist. Check config.json.")
-        exit
-    
+print("Version 1.1")
+
+def getWorkingMirror(configFile,allRepos):
     mirrorList = []
-    
+
     if configFile['mirror_config']["method"] == "auto":
         if configFile['mirror_config']["auto"]["generator"]["country_code"] == "geoip":
             curl.setopt(curl.URL, 'icanhazip.com')
@@ -61,14 +54,6 @@ def main():
 
     ## Shuffle the list so we're not always hitting the same server
     random.shuffle(mirrorList)
-    arch="x86_64"
-    # Get all the repos and add them to the allRepos dict. with the value being the type of repo it is.
-    allRepos=dict.fromkeys(configFile["maint_config"]["remote_repos"],"remote")
-
-    try:
-        allRepos.update(dict.fromkeys(configFile["maint_config"]["local_repos"],"local"))
-    except:
-        print("Local repo not specified")
 
     mirrorToUse = ""
     mirrorDepth = 0
@@ -77,7 +62,7 @@ def main():
         curlResults = True
         for repo,type in allRepos.items():
             if type == "remote":
-                baseUrl = fullUrl.replace('$arch',arch).replace('$repo',repo)
+                baseUrl = fullUrl.replace('$arch',ARCH).replace('$repo',repo)
                 print('Trying '+baseUrl)
                 curl.setopt(curl.FOLLOWLOCATION, True)
                 curl.setopt(curl.URL, baseUrl)
@@ -100,7 +85,7 @@ def main():
             mirrorDepth = fullUrl.split('/$repo')[0].count('/')-2
             print("Mirror "+mirrorToUse)
             print("Depth "+str(mirrorDepth))
-            break
+            return {"url":mirrorToUse,"depth":mirrorDepth}
         else:
             continue
     
@@ -109,6 +94,7 @@ def main():
         print("Exiting...")
         exit
 
+def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
     threadQueue = Queue()
     threadList = []
     repoRoot = str(repoRoot.resolve())
@@ -122,50 +108,74 @@ def main():
            databasePath = Path(repoRoot+'/'+repo+'/'+repo+'.db.tar.gz')
            ignoreVerify = True
         else:
-           downloadUrl = mirrorToUse.replace('$arch',arch).replace('$repo',repo)
+           downloadUrl = mirrorToUse["url"].replace('$arch',ARCH).replace('$repo',repo)
            databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
-           runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorDepth)+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
+           runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorToUse["depth"])+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
            ignoreVerify = False
 
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1,arg2: q.put(repo_dbmaint.parseDB(arg1,arg2)), args=(threadQueue, databasePath,ignoreVerify))
         commandList.append(runCommand)
         threadList.append(parseDbThread)
 
-    def doDownloads():
-        for command in commandList:
-            maxRetry = 3
-            result = -1
-            attempts = 0
-            while (result != 0 and attempts < maxRetry):
-                attempts += 1
-                proc = subprocess.run(command, shell=True)
-                result = proc.returncode
+    
+    for command in commandList:
+        subprocess.run(command, shell=True)
 
-    doDownloads()
-
-    def runThreads(threadList):
-        for thread in threadList:
-            thread.start()
-
-    runThreads(threadList)
+    for thread in threadList:
+        thread.start()
     
     print("Waiting to finish up..")
     for dbThread in threadList:
         dbThread.join()
 
-    addedTotal = 0
-    addedPackages = ""
-    removedTotal = 0
-    removedPackages = ""
+    return threadQueue
 
-    while not threadQueue.empty():
-        result = threadQueue.get()
-        addedTotal += result[0]
-        addedPackages += result[1]
-        removedTotal += result[2]
-        removedPackages += result[3]
-        if(result[4]):
-            runThreads(threadList)
+
+def main():   
+    # Add arguments to the parser
+    all_args.add_argument("-c", "--config", required=True,
+                        help="Path to the config file which contains the appropriate settings")
+    args = vars(all_args.parse_args())
+
+    configFile = json.load(open(args["config"]))
+
+    repoRoot = Path(configFile["maint_config"]["repo_root"])
+
+    if not repoRoot.exists():
+        print(str(repoRoot.resolve()) +" doesn't exist. Check config.json.")
+        exit
+    
+    # Get all the repos and add them to the allRepos dict. with the value being the type of repo it is.
+    allRepos=dict.fromkeys(configFile["maint_config"]["remote_repos"],"remote")
+
+    try:
+        allRepos.update(dict.fromkeys(configFile["maint_config"]["local_repos"],"local"))
+    except:
+        print("Local repo not specified")
+
+    MAX_RETRY = 3
+    readyToContinue = False
+    attempts = 0
+    while (not readyToContinue and attempts < MAX_RETRY):
+        attempts += 1
+
+        mirrorToUse = getWorkingMirror(configFile=configFile, allRepos=allRepos)
+        threadQueue = runDownloadThreads(repoRoot=repoRoot,mirrorToUse=mirrorToUse,allRepos=allRepos)
+
+        addedTotal = 0
+        addedPackages = ""
+        removedTotal = 0
+        removedPackages = ""
+        readyToContinue = True
+
+        while not threadQueue.empty():
+            result = threadQueue.get()
+            addedTotal += result[0]
+            addedPackages += result[1]
+            removedTotal += result[2]
+            removedPackages += result[3]
+            if(result[4]):
+                readyToContinue = False
 
     if addedTotal > 0:
         print("New files added - run notify")

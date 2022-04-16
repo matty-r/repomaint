@@ -169,9 +169,15 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
     if len(keepFiles) > 0 and not wasRun:
         subprocess.run(databaseAddCommand, shell=True)
 
+    reDownload = True
+
+    for file in availableFiles:
+        if not availableFiles[file].verified:
+            reDownload = True
+
     keepFilesString = "\n".join(str(x) for x in keepFiles.keys())
     delFilesString = "\n".join(str(x) for x in delFiles.keys())
-    returnArray = [len(keepFiles),keepFilesString , len(delFiles), delFilesString ]
+    returnArray = [len(keepFiles),keepFilesString , len(delFiles), delFilesString, reDownload, "needs redownload"]
     
     return returnArray
 
@@ -187,6 +193,7 @@ class Package:
         else :
             self.verified = False
             self.verify()
+
         self.parsePkgInfo(pkginfo, database, filename)
 
     def verify(self):
@@ -228,12 +235,15 @@ class Package:
             builddate = valueList["builddate"]
             arch = valueList["arch"]
 
-        self.filename = filename
-        self.name = name
-        self.version = version
-        self.builddate = int(builddate)
-        self.fullPath = self.fullPath.replace(database,filename)
-        print(database+": Read Package - " + self.name)
+        if(name in filename):
+            self.filename = filename
+            self.name = name
+            self.version = version
+            self.builddate = int(builddate)
+            self.fullPath = self.fullPath.replace(database,filename)
+            print(database+": Read Package - " + self.name)
+        else:
+            print("Incorrect package for sig")
             
 
 

@@ -1,3 +1,4 @@
+
 import pycurl
 from io import BytesIO
 import json
@@ -5,7 +6,7 @@ import subprocess
 import argparse
 import repo_dbmaint
 from threading import Thread
-from queue import Queue
+from queue import Empty, Queue
 from pathlib import Path
 import random
 import sys
@@ -130,11 +131,23 @@ def main():
         commandList.append(runCommand)
         threadList.append(parseDbThread)
 
-    for command in commandList:
-        subprocess.run(command, shell=True)
+    def doDownloads():
+        for command in commandList:
+            maxRetry = 3
+            result = -1
+            attempts = 0
+            while (result != 0 and attempts < maxRetry):
+                attempts += 1
+                proc = subprocess.run(command, shell=True)
+                result = proc.returncode
 
-    for thread in threadList:
-        thread.start()
+    doDownloads()
+
+    def runThreads(threadList):
+        for thread in threadList:
+            thread.start()
+
+    runThreads(threadList)
     
     print("Waiting to finish up..")
     for dbThread in threadList:
@@ -151,6 +164,8 @@ def main():
         addedPackages += result[1]
         removedTotal += result[2]
         removedPackages += result[3]
+        if(result[4]):
+            runThreads(threadList)
 
     if addedTotal > 0:
         print("New files added - run notify")

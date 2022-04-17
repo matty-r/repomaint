@@ -1,27 +1,132 @@
-from ast import Constant
-from typing import Any
 import pycurl
 from io import BytesIO
 import json
 import subprocess
 import argparse
-import repo_dbmaint
 from threading import Thread
-from queue import Empty, Queue
+from queue import Queue
 from pathlib import Path
 import random
 import sys
+import re
+import repo_dbmaint
+from html.parser import HTMLParser
 
 curl = pycurl.Curl()
 b = BytesIO()
 curl.setopt(curl.WRITEDATA, b)
 curl.setopt(curl.CONNECTTIMEOUT, 10)
+curl.setopt(curl.FOLLOWLOCATION, 1)
 
 # Construct an argument parser
 all_args = argparse.ArgumentParser()
 ARCH="x86_64"
 
 print("Version 1.1")
+
+def resetBytes():
+    b.truncate(0)
+    b.seek(0)
+
+class MyHTMLParser(HTMLParser):
+    tagData = ""
+
+    def handle_data(self, data):
+        self.tagData = data.strip()
+
+class HtmlTable():
+    tableHtml = ""
+    tableHeaders = []
+    tableData = []
+    parser = MyHTMLParser()
+
+    def __init__(self,html,idOrClass) -> None:
+        self.tableHtml = html
+        tableRegex = '<table(.*?)/table>'
+
+        tableHtml = re.finditer(tableRegex,html)
+        for table in tableHtml:
+            if idOrClass in table.group(1):
+                self.tableHtml = table.group(1)
+                break
+
+        self.setTableHeaders()
+        self.setTableData()
+
+
+    def setTableHeaders(self):
+        tableHeaders = []
+        thRegex = '<th>(.*?)</th>'
+
+        for match in re.finditer(thRegex,self.tableHtml):
+            tableHeaders.append(match.group(1))
+
+        self.tableHeaders = tableHeaders
+
+    def setTableData(self):
+        trRegex = '<tr>(.*?)</tr>'
+        tdRegex = '<td(.*?)/td>'
+
+        for match in re.finditer(trRegex,self.tableHtml):
+            if '"country"' in match.group(0) and 'rsync' in match.group(0):
+                rsyncSite = {}
+                for match in re.finditer(tdRegex,match.group(0)):
+                    self.parser.feed(match.group(0))
+                    rsyncSite[self.tableHeaders[len(rsyncSite)]] = self.parser.tagData
+
+                self.tableData.append(rsyncSite)
+
+def getRsyncUrls(configFile):
+    rsyncMirrors = []
+    
+    rsyncMirrorUrl = configFile['mirror_config']["auto"]["generator"]["rsync_url"]
+
+    curl.setopt(curl.URL, rsyncMirrorUrl)
+    curl.perform()
+    rsyncHtml = str(b.getvalue(), 'UTF-8').replace("\n", "")
+    resetBytes()
+
+    # curl.setopt(curl.URL,"https://raw.githubusercontent.com/annexare/Countries/master/data/countries.json")
+    # curl.perform()
+    # countries = json.loads(str(b.getvalue(), 'UTF-8'))
+    # resetBytes()
+
+    rsyncMirrors = HtmlTable(rsyncHtml,'class="results"')
+    rsyncDetailsArray = []
+
+    for mirror in rsyncMirrors.tableData:
+        curl.setopt(curl.URL, rsyncMirrorUrl+mirror["Server"]+"/json")
+        curl.perform()
+        mirrorDetails = json.loads(str(b.getvalue(), 'UTF-8'))
+        resetBytes()
+        
+        for url in mirrorDetails["urls"]:
+            mirror[url["protocol"]] = url["url"]
+            mirror[url["country_code"]] = url["country_code"]
+
+    # australianRepos = []
+    # for rsyncRepo in [i for i in rsyncMirrors.tableData if 'Australia' in i["Country"]]:
+    #     australianRepos.append(rsyncRepo)
+
+    print("table stuff")
+
+
+def getMirrors(configFile,countryCode):
+    mirrorUrls = []
+    generatorConfig = configFile['mirror_config']["auto"]["generator"]
+
+    enabledProtocols = [i for i in generatorConfig["protocols"] if generatorConfig["protocols"][i] == True]
+    mirrorListURL = generatorConfig["mirror_json"]
+
+    curl.setopt(curl.URL, mirrorListURL)
+    curl.perform()
+    mirrorDetails = json.loads(str(b.getvalue(), 'UTF-8'))
+    resetBytes()
+    for url in [i for i in mirrorDetails['urls'] if i["country_code"] == countryCode and i["active"] == True]:
+        if url["protocol"] in enabledProtocols:
+            mirrorUrls.append(url)
+
+    return mirrorUrls
 
 def getWorkingMirror(configFile,allRepos):
     mirrorList = []
@@ -35,19 +140,10 @@ def getWorkingMirror(configFile,allRepos):
             curl.perform()
             response = json.loads(str(b.getvalue(), 'UTF-8').splitlines()[1])
             print("Country Code: "+response["countryCode"])
-            countryCode = '?country='+response["countryCode"]
+            countryCode = response["countryCode"]
         else:
-            countryCode = '?country='+str(configFile['mirror_config']["auto"]["generator"]["country_code"]).upper()
-        protocols = configFile['mirror_config']["auto"]["generator"]["protocols"]
-        ipVersions = configFile['mirror_config']["auto"]["generator"]["ip_versions"]
-        enabledProtocols = "&protocol="+"&protocol=".join([i for i in protocols if protocols[i] == True])
-        enabledIPVersions = "&ip_version="+"&ip_version=".join([i for i in ipVersions if ipVersions[i] == True])
-        useMirrorStatus = ("&use_mirror_status=on" if configFile['mirror_config']["auto"]["generator"]["use_mirror_status"] == "on" else "")
-        mirrorListURL = configFile['mirror_config']["auto"]["generator"]["url"]+countryCode+enabledProtocols+enabledIPVersions+useMirrorStatus
-        curl.setopt(curl.URL, mirrorListURL)
-        curl.perform()
-        for line in [i for i in str(b.getvalue(), 'UTF-8').splitlines() if i.__contains__('#Server = ')]:
-            mirrorList.append(line.split('#Server = ')[1])
+            countryCode = str(configFile['mirror_config']["auto"]["generator"]["country_code"]).upper()
+        mirrorList = getMirrors(configFile,countryCode)
     else:
         for server in configFile['mirror_config']["manual"]["servers"]:
             mirrorList.append(server["server"])
@@ -64,7 +160,6 @@ def getWorkingMirror(configFile,allRepos):
             if type == "remote":
                 baseUrl = fullUrl.replace('$arch',ARCH).replace('$repo',repo)
                 print('Trying '+baseUrl)
-                curl.setopt(curl.FOLLOWLOCATION, True)
                 curl.setopt(curl.URL, baseUrl)
                 try:
                     curl.perform()

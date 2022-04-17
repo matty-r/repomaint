@@ -33,5 +33,4 @@ Maintain a local Arch Linux repository
 
 ## TODO
 
-- Add rsync method - https://gitlab.archlinux.org/archlinux/infrastructure/-/blob/master/roles/syncrepo/files/syncrepo-template.sh
-    -   rsync url found - https://archlinux.org/mirrors/
+- Build AUR packages in a docker container

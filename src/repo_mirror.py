@@ -153,34 +153,41 @@ def getWorkingMirror(configFile,allRepos):
 
     mirrorToUse = ""
     mirrorDepth = 0
-    for fullUrl in mirrorList:
+    for mirror in mirrorList:
         # baseUrl = fullUrl.split('://')[1].split('/')[0]
         curlResults = True
         for repo,type in allRepos.items():
             if type == "remote":
-                baseUrl = fullUrl.replace('$arch',ARCH).replace('$repo',repo)
-                print('Trying '+baseUrl)
-                curl.setopt(curl.URL, baseUrl)
-                try:
-                    curl.perform()
-                except:
-                    print('Problem retrieving URL, skipping..')
-                    break
-                
-                curlResponse = curl.getinfo(pycurl.RESPONSE_CODE)
-                print('Response: '+str(curlResponse)+' for '+repo)
-                if curlResponse != 200:
-                    curlResults = False
-                    break
-        
+                if "http" in mirror["protocol"]:
+                    baseUrl = mirror["url"].replace('$arch',ARCH).replace('$repo',repo)
+                    print('Trying '+baseUrl)
+                    curl.setopt(curl.URL, baseUrl)
+                    try:
+                        curl.perform()
+                    except:
+                        print('Problem retrieving URL, skipping..')
+                        break
+                    
+                    curlResponse = curl.getinfo(pycurl.RESPONSE_CODE)
+                    print('Response: '+str(curlResponse)+' for '+repo)
+                    if curlResponse != 200:
+                        curlResults = False
+                        break
+                elif "rsync" in mirror["protocol"]:
+                    rsyncCommand = 'rsync -qlptH --safe-links --delete-delay --delay-updates "--timeout=600" "--contimeout=60" --no-motd '+mirror["url"]
+                    proc = subprocess.run(rsyncCommand, shell=True)
+                    if proc.returncode != 0:
+                        curlResults = False
+                        break
+
         if curlResults:
             print('Got reponse')
 
-            mirrorToUse = fullUrl
-            mirrorDepth = fullUrl.split('/$repo')[0].count('/')-2
+            mirrorToUse = mirror["url"]+'$repo/os/$arch'
+            mirrorDepth = mirror["url"].split("$repo")[0].count('/')-2
             print("Mirror "+mirrorToUse)
             print("Depth "+str(mirrorDepth))
-            return {"url":mirrorToUse,"depth":mirrorDepth}
+            return {"url":mirrorToUse,"depth":mirrorDepth,"protocol":mirror["protocol"]}
         else:
             continue
     
@@ -199,14 +206,18 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
         ignoreVerify = False
 
         if type == "local":
-           runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --noview --noconfirm'
-           databasePath = Path(repoRoot+'/'+repo+'/'+repo+'.db.tar.gz')
-           ignoreVerify = True
+            runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --noview --noconfirm'
+            databasePath = Path(repoRoot+'/'+repo+'/'+repo+'.db.tar.gz')
+            ignoreVerify = True
         else:
-           downloadUrl = mirrorToUse["url"].replace('$arch',ARCH).replace('$repo',repo)
-           databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
-           runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorToUse["depth"])+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
-           ignoreVerify = False
+            downloadUrl = mirrorToUse["url"].replace('$arch',ARCH).replace('$repo',repo)
+            databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
+            if "http" in mirrorToUse["protocol"] :
+                runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorToUse["depth"])+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
+            else:
+                # rsync
+                runCommand = 'rsync -vrLptH --include="*.pkg.tar.zst*" --exclude="*" --delete-delay --delay-updates "--timeout=600" "--contimeout=60" --no-motd '+downloadUrl+'/ '+str(databasePath.parent)+"/"
+            ignoreVerify = False
 
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1,arg2: q.put(repo_dbmaint.parseDB(arg1,arg2)), args=(threadQueue, databasePath,ignoreVerify))
         commandList.append(runCommand)

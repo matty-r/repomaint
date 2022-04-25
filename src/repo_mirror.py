@@ -28,12 +28,14 @@ def resetBytes():
     b.truncate(0)
     b.seek(0)
 
+## Not Used
 class MyHTMLParser(HTMLParser):
     tagData = ""
 
     def handle_data(self, data):
         self.tagData = data.strip()
 
+## Not Used
 class HtmlTable():
     tableHtml = ""
     tableHeaders = []
@@ -76,6 +78,7 @@ class HtmlTable():
 
                 self.tableData.append(rsyncSite)
 
+## Not used - was used to parse the html on the rsync page
 def getRsyncUrls(configFile):
     rsyncMirrors = []
     
@@ -86,13 +89,7 @@ def getRsyncUrls(configFile):
     rsyncHtml = str(b.getvalue(), 'UTF-8').replace("\n", "")
     resetBytes()
 
-    # curl.setopt(curl.URL,"https://raw.githubusercontent.com/annexare/Countries/master/data/countries.json")
-    # curl.perform()
-    # countries = json.loads(str(b.getvalue(), 'UTF-8'))
-    # resetBytes()
-
     rsyncMirrors = HtmlTable(rsyncHtml,'class="results"')
-    rsyncDetailsArray = []
 
     for mirror in rsyncMirrors.tableData:
         curl.setopt(curl.URL, rsyncMirrorUrl+mirror["Server"]+"/json")
@@ -103,12 +100,6 @@ def getRsyncUrls(configFile):
         for url in mirrorDetails["urls"]:
             mirror[url["protocol"]] = url["url"]
             mirror[url["country_code"]] = url["country_code"]
-
-    # australianRepos = []
-    # for rsyncRepo in [i for i in rsyncMirrors.tableData if 'Australia' in i["Country"]]:
-    #     australianRepos.append(rsyncRepo)
-
-    print("table stuff")
 
 
 def getMirrors(configFile,countryCode):
@@ -204,9 +195,9 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
 
     for repo,type in allRepos.items():
         ignoreVerify = False
-
+        
         if type == "local":
-            runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --noview --noconfirm'
+            runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --rebuildall --noview --noconfirm'
             databasePath = Path(repoRoot+'/'+repo+'/'+repo+'.db.tar.gz')
             ignoreVerify = True
         else:
@@ -217,7 +208,6 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
             else:
                 # rsync
                 runCommand = 'rsync -vrLptH --include="*.pkg.tar.zst*" --exclude="*" --delete-delay --delay-updates "--timeout=600" "--contimeout=60" --no-motd '+downloadUrl+'/ '+str(databasePath.parent)+"/"
-            ignoreVerify = False
 
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1,arg2: q.put(repo_dbmaint.parseDB(arg1,arg2)), args=(threadQueue, databasePath,ignoreVerify))
         commandList.append(runCommand)
@@ -262,31 +252,37 @@ def main():
     MAX_RETRY = 3
     readyToContinue = False
     attempts = 0
+    reposToDownload = allRepos
+    addedTotal = 0
+    addedPackages = ""
+    removedTotal = 0
+    removedPackages = ""
+
+    mirrorToUse = getWorkingMirror(configFile=configFile, allRepos=reposToDownload)
     while (not readyToContinue and attempts < MAX_RETRY):
         attempts += 1
 
-        mirrorToUse = getWorkingMirror(configFile=configFile, allRepos=allRepos)
-        threadQueue = runDownloadThreads(repoRoot=repoRoot,mirrorToUse=mirrorToUse,allRepos=allRepos)
-
-        addedTotal = 0
-        addedPackages = ""
-        removedTotal = 0
-        removedPackages = ""
         readyToContinue = True
+        threadQueue = runDownloadThreads(repoRoot=repoRoot,mirrorToUse=mirrorToUse,allRepos=reposToDownload)
 
         while not threadQueue.empty():
-            result = threadQueue.get()
-            addedTotal += result[0]
-            addedPackages += result[1]
-            removedTotal += result[2]
-            removedPackages += result[3]
-            if(result[4]):
+            returnObject = threadQueue.get()
+            # Needs redownload
+            if(returnObject["Redownload"]):
                 readyToContinue = False
+                continue
+            
+            #Remove repo from download list
+            reposToDownload.pop(returnObject["Repo"])
+            addedTotal += returnObject["Added Count"]
+            addedPackages += returnObject["Added String"]
+            removedTotal += returnObject["Deleted Count"]
+            removedPackages += returnObject["Deleted String"]
 
     if addedTotal > 0:
         print("New files added - run notify")
         scriptPath = Path(sys.argv[0]).parent.resolve()
-        notifyCommand = 'python "'+str(scriptPath)+'/repo_notify.py" -c "'+args["config"]+'" -m "Added '+str(addedTotal)+' new packages.\n' + addedPackages + '"'
+        notifyCommand = 'python "'+str(scriptPath)+'/repo_notify.py" -c "'+args["config"]+'" -m "'+ addedPackages + ' ' + removedPackages +'"'
         print(notifyCommand)
         subprocess.run(notifyCommand, shell=True)
     

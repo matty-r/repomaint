@@ -3,6 +3,10 @@ import subprocess
 import glob
 import argparse
 import tarfile
+import time
+import numpy as np
+from threading import Thread
+from queue import Queue
 from pathlib import Path
 
 # Construct an argument parser
@@ -15,9 +19,65 @@ def main():
     args = vars(all_args.parse_args())
     parseDB(Path(args['database']))
 
-def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
+def verifyPKGFiles(fileArray,databaseName,ignoreVerify):
+    availableFiles = {}
+    delFiles = {}
+
+    for pkgFilePath in fileArray:
+        readPkgCommand='tar -xOf "'+pkgFilePath+'" .PKGINFO --no-recursion'
+        ## Add universal_newlines=True below to remove BYTES indicator if needed
+        pkgInfoContents = subprocess.run(readPkgCommand, shell=True, stdout=subprocess.PIPE).stdout.splitlines()
+        pkgFileName = str(Path(pkgFilePath).name)
+        try:
+            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath), ignoreVerify=ignoreVerify)
+            if newPackage.name not in availableFiles.keys():
+                availableFiles[newPackage.name] = newPackage
+            else:
+                if availableFiles[newPackage.name].builddate < newPackage.builddate:
+                    delFiles[availableFiles[newPackage.name].filename] = availableFiles[newPackage.name].filename
+                    availableFiles[newPackage.name] = newPackage
+        except:
+            if(Path.exists(Path(pkgFilePath))):
+                print("Invalid package.. delete it")
+                os.remove(pkgFilePath)
+
+    return (availableFiles,delFiles)
+
+def parsePKGFiles(filePaths,databaseName,ignoreVerify):
+    threadList = []
+    threadQueue = Queue()
+    filePathArray = np.array(filePaths)
+    chunk_size = len(filePaths) / 5 
+    filePathSplit = np.array_split(filePathArray, len(filePaths) // chunk_size)
+    availableFiles = {}
+    delFiles = {}
+
+
+    x = 0
+    for fileArray in filePathSplit:
+        x += 1
+        VerifyPKGThread = Thread(name=databaseName+"-verify-"+str(x),target=lambda q, arg1,arg2,arg3: q.put(verifyPKGFiles(arg1,arg2,arg3)), args=(threadQueue,fileArray, databaseName,ignoreVerify))
+        threadList.append(VerifyPKGThread)
+    
+    for thread in threadList:
+        thread.start()
+
+    print("Waiting to finish up..")
+    for dbThread in threadList:
+        dbThread.join()
+
+    while not threadQueue.empty():
+        result = threadQueue.get()
+        availableFiles = availableFiles | result[0]
+        delFiles = delFiles | result[1]
+    
+    return (availableFiles,delFiles)
+
+def parseDB(databasePath: Path, ignoreVerify: bool = False):
     rootFolder = Path(databasePath.parent)
     databaseName = databasePath.name
+
+    returnObject = {}
 
     availableFiles = {}
     keepFiles = {}
@@ -32,34 +92,28 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
     checkError = subprocess.run(databaseCheckCommand, shell=True, universal_newlines=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE).stderr.splitlines()
 
     if len(checkError) <= 0:
-        print("Database is GOOD!")
+        print(databaseName+" database is GOOD!")
         databaseReady = True
     else:
-        print("Database is BAD :(, rebuild required.")
+        print(databaseName+" database is BAD :(, rebuild required.")
 
         deleteFiles = glob.glob(str(rootFolder)+"/"+databaseName.split(".db.")[0]+"*")
         for file in deleteFiles:
             if os.path.exists(file) :
                 os.remove(file)
 
-    for pkgFilePath in filePaths:
-        readPkgCommand='tar xvf "'+pkgFilePath+'" .PKGINFO --to-command=cat'
-        ## Add universal_newlines=True below to remove BYTES indicator if needed
-        pkgInfoContents = subprocess.run(readPkgCommand, shell=True, stdout=subprocess.PIPE).stdout.splitlines()
-        pkgFileName = str(Path(pkgFilePath).name)
-        try:
-            newPackage = Package(pkgInfoContents, databaseName, pkgFileName, Path(pkgFilePath), ignoreVerify=ignoreVerify)
-            if newPackage.name not in availableFiles.keys():
-                availableFiles[newPackage.name] = newPackage
-            else:
-                if availableFiles[newPackage.name].builddate < newPackage.builddate:
-                    delFiles[availableFiles[newPackage.name].filename] = availableFiles[newPackage.name].filename
-                    availableFiles[newPackage.name] = newPackage
-                    
-        except:
-            if(Path.exists(Path(pkgFilePath))):
-                print("Invalid package.. delete it")
-                os.remove(pkgFilePath)
+    # get the start time
+    st = time.time()
+    pkgFiles = parsePKGFiles(filePaths,databaseName,ignoreVerify)
+    # get the end time
+    et = time.time()
+
+    # get the execution time
+    elapsed_time = et - st
+    print('Execution time:', elapsed_time, 'seconds')
+
+    availableFiles = pkgFiles[0]
+    delFiles = pkgFiles[1]
 
     print(databaseName+": Repo directory contains " + str(len(availableFiles)) + " unique packages.")
 
@@ -131,8 +185,18 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
             wasRun = False
     
     # Run the repo-remove command if it hasn't been run yet
-    if len(delFiles) > 0 and not wasRun:
-        subprocess.run(databaseRemCommand, shell=True)
+    if len(delFiles) > 0 and not wasRun and Path.exists(databasePath):
+        repoRemoveSuccess = subprocess.run(databaseRemCommand, shell=True, universal_newlines=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE).stderr.splitlines()
+        if len(repoRemoveSuccess) <= 0:
+            print("Modified Database success")
+        else:
+            print("Modified Database failed. Rebuild required.")
+            deleteFiles = glob.glob(str(rootFolder)+"/"+databaseName.split(".db.")[0]+"*")
+            returnObject["Redownload"] = True
+            for file in deleteFiles:
+                if os.path.exists(file) :
+                    os.remove(file)
+            return returnObject
 
     # Delete the actual files from the system now, if they're still there
     for file in delFiles.keys():
@@ -167,7 +231,11 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
             wasRun = False
 
     if len(keepFiles) > 0 and not wasRun:
-        subprocess.run(databaseAddCommand, shell=True)
+        modifyDatabase = subprocess.run(databaseAddCommand, shell=True, universal_newlines=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE).stderr.splitlines()
+        if len(modifyDatabase) <= 0:
+            print("Modified Database success")
+        else:
+            print("Modified Database failed")
 
     reDownload = False
 
@@ -177,9 +245,18 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False) -> str:
 
     keepFilesString = "\n".join(str(x) for x in keepFiles.keys())
     delFilesString = "\n".join(str(x) for x in delFiles.keys())
-    returnArray = [len(keepFiles),keepFilesString , len(delFiles), delFilesString, reDownload, "needs redownload"]
     
-    return returnArray
+    returnObject["Repo"] = databaseName.split('.')[0]
+    returnObject["Added Count"] = len(keepFiles)
+    returnObject["Added String"] = returnObject["Repo"] + " added " + str(returnObject["Added Count"]) + " files\n"
+    returnObject["Deleted Count"] = len(delFiles)
+    returnObject["Deleted String"] = returnObject["Repo"] + " deleted " + str(returnObject["Deleted Count"]) + " files\n"
+    returnObject["Redownload"] = reDownload
+    
+
+    #returnArray = [len(keepFiles),keepFilesString , len(delFiles), delFilesString, reDownload, "needs redownload"]
+    
+    return returnObject
 
 
 class Package:

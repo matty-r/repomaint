@@ -24,84 +24,15 @@ ARCH="x86_64"
 
 print("Version 1.1")
 
+# Used to remove/reset the data in the BytesIO() object
+# Otherwise the data is appended to it and you'll need
+# to account for the offset between the new data and the old
 def resetBytes():
     b.truncate(0)
     b.seek(0)
 
-## Not Used
-class MyHTMLParser(HTMLParser):
-    tagData = ""
-
-    def handle_data(self, data):
-        self.tagData = data.strip()
-
-## Not Used
-class HtmlTable():
-    tableHtml = ""
-    tableHeaders = []
-    tableData = []
-    parser = MyHTMLParser()
-
-    def __init__(self,html,idOrClass) -> None:
-        self.tableHtml = html
-        tableRegex = '<table(.*?)/table>'
-
-        tableHtml = re.finditer(tableRegex,html)
-        for table in tableHtml:
-            if idOrClass in table.group(1):
-                self.tableHtml = table.group(1)
-                break
-
-        self.setTableHeaders()
-        self.setTableData()
-
-
-    def setTableHeaders(self):
-        tableHeaders = []
-        thRegex = '<th>(.*?)</th>'
-
-        for match in re.finditer(thRegex,self.tableHtml):
-            tableHeaders.append(match.group(1))
-
-        self.tableHeaders = tableHeaders
-
-    def setTableData(self):
-        trRegex = '<tr>(.*?)</tr>'
-        tdRegex = '<td(.*?)/td>'
-
-        for match in re.finditer(trRegex,self.tableHtml):
-            if '"country"' in match.group(0) and 'rsync' in match.group(0):
-                rsyncSite = {}
-                for match in re.finditer(tdRegex,match.group(0)):
-                    self.parser.feed(match.group(0))
-                    rsyncSite[self.tableHeaders[len(rsyncSite)]] = self.parser.tagData
-
-                self.tableData.append(rsyncSite)
-
-## Not used - was used to parse the html on the rsync page
-def getRsyncUrls(configFile):
-    rsyncMirrors = []
-    
-    rsyncMirrorUrl = configFile['mirror_config']["auto"]["generator"]["rsync_url"]
-
-    curl.setopt(curl.URL, rsyncMirrorUrl)
-    curl.perform()
-    rsyncHtml = str(b.getvalue(), 'UTF-8').replace("\n", "")
-    resetBytes()
-
-    rsyncMirrors = HtmlTable(rsyncHtml,'class="results"')
-
-    for mirror in rsyncMirrors.tableData:
-        curl.setopt(curl.URL, rsyncMirrorUrl+mirror["Server"]+"/json")
-        curl.perform()
-        mirrorDetails = json.loads(str(b.getvalue(), 'UTF-8'))
-        resetBytes()
-        
-        for url in mirrorDetails["urls"]:
-            mirror[url["protocol"]] = url["url"]
-            mirror[url["country_code"]] = url["country_code"]
-
-
+# Reads the config, and parses all returned URLs if it's active
+# and matches the specified countrycode.
 def getMirrors(configFile,countryCode):
     mirrorUrls = []
     generatorConfig = configFile['mirror_config']["auto"]["generator"]
@@ -119,6 +50,8 @@ def getMirrors(configFile,countryCode):
 
     return mirrorUrls
 
+# For each mirror URL returned, we attempt to connect
+# if connection is successful we return that working URL
 def getWorkingMirror(configFile,allRepos):
     mirrorList = []
 
@@ -145,9 +78,9 @@ def getWorkingMirror(configFile,allRepos):
     mirrorToUse = ""
     mirrorDepth = 0
     for mirror in mirrorList:
-        # baseUrl = fullUrl.split('://')[1].split('/')[0]
         curlResults = True
         for repo,type in allRepos.items():
+            # Remote = non-locally hosted (i.e not built AUR packages)
             if type == "remote":
                 if "http" in mirror["protocol"]:
                     baseUrl = mirror["url"].replace('$arch',ARCH).replace('$repo',repo)
@@ -158,7 +91,7 @@ def getWorkingMirror(configFile,allRepos):
                     except:
                         print('Problem retrieving URL, skipping..')
                         break
-                    
+
                     curlResponse = curl.getinfo(pycurl.RESPONSE_CODE)
                     print('Response: '+str(curlResponse)+' for '+repo)
                     if curlResponse != 200:
@@ -181,7 +114,7 @@ def getWorkingMirror(configFile,allRepos):
             return {"url":mirrorToUse,"depth":mirrorDepth,"protocol":mirror["protocol"]}
         else:
             continue
-    
+
     if mirrorToUse == "":
         print("Something went wrong, got no responses.")
         print("Exiting...")
@@ -195,7 +128,7 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
 
     for repo,type in allRepos.items():
         ignoreVerify = False
-        
+
         if type == "local":
             runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --rebuildall --noview --noconfirm'
             databasePath = Path(repoRoot+'/'+repo+'/'+repo+'.db.tar.gz')
@@ -213,13 +146,13 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
         commandList.append(runCommand)
         threadList.append(parseDbThread)
 
-    
+
     for command in commandList:
         subprocess.run(command, shell=True)
 
     for thread in threadList:
         thread.start()
-    
+
     print("Waiting to finish up..")
     for dbThread in threadList:
         dbThread.join()
@@ -227,7 +160,7 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
     return threadQueue
 
 
-def main():   
+def main():
     # Add arguments to the parser
     all_args.add_argument("-c", "--config", required=True,
                         help="Path to the config file which contains the appropriate settings")
@@ -240,7 +173,7 @@ def main():
     if not repoRoot.exists():
         print(str(repoRoot.resolve()) +" doesn't exist. Check config.json.")
         exit
-    
+
     # Get all the repos and add them to the allRepos dict. with the value being the type of repo it is.
     allRepos=dict.fromkeys(configFile["maint_config"]["remote_repos"],"remote")
 
@@ -259,6 +192,7 @@ def main():
     removedPackages = ""
 
     mirrorToUse = getWorkingMirror(configFile=configFile, allRepos=reposToDownload)
+
     while (not readyToContinue and attempts < MAX_RETRY):
         attempts += 1
 
@@ -271,13 +205,14 @@ def main():
             if(returnObject["Redownload"]):
                 readyToContinue = False
                 continue
-            
+
             #Remove repo from download list
             reposToDownload.pop(returnObject["Repo"])
-            addedTotal += returnObject["Added Count"]
-            addedPackages += returnObject["Added String"]
-            removedTotal += returnObject["Deleted Count"]
-            removedPackages += returnObject["Deleted String"]
+            if returnObject["Added Count"] > 0 or returnObject["Deleted Count"] > 0:
+                addedTotal += returnObject["Added Count"]
+                addedPackages += returnObject["Added String"]
+                removedTotal += returnObject["Deleted Count"]
+                removedPackages += returnObject["Deleted String"]
 
     if addedTotal > 0:
         print("New files added - run notify")
@@ -285,7 +220,7 @@ def main():
         notifyCommand = 'python "'+str(scriptPath)+'/repo_notify.py" -c "'+args["config"]+'" -m "'+ addedPackages + ' ' + removedPackages +'"'
         print(notifyCommand)
         subprocess.run(notifyCommand, shell=True)
-    
+
     print("Done")
 
 

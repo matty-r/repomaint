@@ -47,7 +47,7 @@ def parsePKGFiles(filePaths,databaseName,ignoreVerify):
     threadList = []
     threadQueue = Queue()
     filePathArray = np.array(filePaths)
-    chunk_size = len(filePaths) / 5 
+    chunk_size = len(filePaths) / 5
     filePathSplit = np.array_split(filePathArray, len(filePaths) // chunk_size)
     availableFiles = {}
     delFiles = {}
@@ -58,7 +58,7 @@ def parsePKGFiles(filePaths,databaseName,ignoreVerify):
         x += 1
         VerifyPKGThread = Thread(name=databaseName+"-verify-"+str(x),target=lambda q, arg1,arg2,arg3: q.put(verifyPKGFiles(arg1,arg2,arg3)), args=(threadQueue,fileArray, databaseName,ignoreVerify))
         threadList.append(VerifyPKGThread)
-    
+
     for thread in threadList:
         thread.start()
 
@@ -70,7 +70,7 @@ def parsePKGFiles(filePaths,databaseName,ignoreVerify):
         result = threadQueue.get()
         availableFiles = availableFiles | result[0]
         delFiles = delFiles | result[1]
-    
+
     return (availableFiles,delFiles)
 
 def parseDB(databasePath: Path, ignoreVerify: bool = False):
@@ -118,7 +118,7 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
     print(databaseName+": Repo directory contains " + str(len(availableFiles)) + " unique packages.")
 
     databaseFiles = []
-   
+
     if databaseReady:
         if Path.exists(databasePath):
             print(databaseName+": Database exists, indexing..")
@@ -162,10 +162,10 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
         if not inDatabase:
             keepFiles[file.name] = file.filename
             print(databaseName+": Will add " + file.filename+" into the database.")
-            
+
     print(databaseName+": Adding " + str(len(keepFiles)) + " files.")
     print(databaseName+": Deleting " + str(len(delFiles)) + " files.")
-    
+
     databaseRemCommand = 'repo-remove "'+str(databasePath)+'"'
     maxCommandLength = int(int(subprocess.run('getconf ARG_MAX', shell=True, stdout=subprocess.PIPE,universal_newlines=True).stdout.splitlines()[0])/16)
     wasRun = False
@@ -173,6 +173,8 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
     # Clean up the database
     for file in delFiles.keys():
         tempCommand = databaseRemCommand + ' "'+str(file)+'"'
+        if file in keepFiles:
+            print(databaseName+": "+file+" removing from keep files")
 
         # Consolidate the repo-remove command to save time
         if len(tempCommand) > maxCommandLength:
@@ -183,20 +185,23 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
         else:
             databaseRemCommand = tempCommand
             wasRun = False
-    
+
     # Run the repo-remove command if it hasn't been run yet
     if len(delFiles) > 0 and not wasRun and Path.exists(databasePath):
         repoRemoveSuccess = subprocess.run(databaseRemCommand, shell=True, universal_newlines=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE).stderr.splitlines()
         if len(repoRemoveSuccess) <= 0:
-            print("Modified Database success")
+            print(databaseName+": Deleting files from database successful")
         else:
-            print("Modified Database failed. Rebuild required.")
-            deleteFiles = glob.glob(str(rootFolder)+"/"+databaseName.split(".db.")[0]+"*")
-            returnObject["Redownload"] = True
-            for file in deleteFiles:
-                if os.path.exists(file) :
-                    os.remove(file)
-            return returnObject
+            for error in repoRemoveSuccess:
+                if "not found" not in error:
+                    print(repoRemoveSuccess)
+                    print("deleting files from DB failed")
+                    deleteFiles = glob.glob(str(rootFolder)+"/"+databaseName.split(".db.")[0]+"*")
+                    returnObject["Redownload"] = True
+                    for file in deleteFiles:
+                        if os.path.exists(file) :
+                            os.remove(file)
+                    return returnObject
 
     # Delete the actual files from the system now, if they're still there
     for file in delFiles.keys():
@@ -210,9 +215,9 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
 
         if(Path.exists(filePathSig)):
             os.remove(filePathSig)
-    
-    databaseAddCommand = 'repo-add "'+str(databasePath)+'"'
-    
+
+    databaseAddCommand = 'repo-add -q "'+str(databasePath)+'"'
+
     wasRun = False
 
     for file in keepFiles.keys():
@@ -224,7 +229,7 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
         if len(tempCommand) > maxCommandLength:
             subprocess.run(databaseAddCommand, shell=True)
             # Restart the databseCommand
-            databaseAddCommand = 'repo-add "'+str(databasePath)+ '" "'+str(filePath)+'"'
+            databaseAddCommand = 'repo-add -q "'+str(databasePath)+ '" "'+str(filePath)+'"'
             wasRun = True
         else :
             databaseAddCommand = tempCommand
@@ -233,9 +238,9 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
     if len(keepFiles) > 0 and not wasRun:
         modifyDatabase = subprocess.run(databaseAddCommand, shell=True, universal_newlines=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE).stderr.splitlines()
         if len(modifyDatabase) <= 0:
-            print("Modified Database success")
+            print(databaseName+": Adding files successful")
         else:
-            print("Modified Database failed")
+            print(databaseName+": Adding files failed")
 
     reDownload = False
 
@@ -243,19 +248,13 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
         if not availableFiles[file].verified:
             reDownload = True
 
-    keepFilesString = "\n".join(str(x) for x in keepFiles.keys())
-    delFilesString = "\n".join(str(x) for x in delFiles.keys())
-    
     returnObject["Repo"] = databaseName.split('.')[0]
     returnObject["Added Count"] = len(keepFiles)
     returnObject["Added String"] = returnObject["Repo"] + " added " + str(returnObject["Added Count"]) + " files\n"
     returnObject["Deleted Count"] = len(delFiles)
     returnObject["Deleted String"] = returnObject["Repo"] + " deleted " + str(returnObject["Deleted Count"]) + " files\n"
     returnObject["Redownload"] = reDownload
-    
 
-    #returnArray = [len(keepFiles),keepFilesString , len(delFiles), delFilesString, reDownload, "needs redownload"]
-    
     return returnObject
 
 
@@ -321,7 +320,7 @@ class Package:
             print(database+": Read Package - " + self.name)
         else:
             print("Incorrect package for sig")
-            
+
 
 
 if __name__ == "__main__":

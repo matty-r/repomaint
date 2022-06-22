@@ -130,7 +130,7 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
         ignoreVerify = False
 
         if type == "local":
-            runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --rebuildall --noview --noconfirm'
+            runCommand = 'yay -Syy;aur sync -d "'+ repo +'" -u --noview --noconfirm'
             databasePath = Path(repoRoot+'/'+repo+'/'+repo+'.db.tar.gz')
             ignoreVerify = True
         else:
@@ -140,7 +140,7 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
                 runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorToUse["depth"])+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
             else:
                 # rsync
-                runCommand = 'rsync -vrLptH --include="*.pkg.tar.zst*" --exclude="*" --delete-delay --delay-updates "--timeout=600" "--contimeout=60" --no-motd '+downloadUrl+'/ '+str(databasePath.parent)+"/"
+                runCommand = 'rsync -vrLptH --include="*.pkg.tar.zst*" --include="*.pkg.tar.xz*" --exclude="*" --delete-delay --delay-updates "--timeout=600" "--contimeout=60" --no-motd '+downloadUrl+'/ '+str(databasePath.parent)+"/"
 
         parseDbThread = Thread(name="Thread-"+repo,target=lambda q, arg1,arg2: q.put(repo_dbmaint.parseDB(arg1,arg2)), args=(threadQueue, databasePath,ignoreVerify))
         commandList.append(runCommand)

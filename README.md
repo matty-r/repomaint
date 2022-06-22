@@ -1,5 +1,5 @@
 # repomaint
-Maintain a local Arch Linux repository
+Maintains a local Arch Linux repository mirror.
 
 ## Prerequisites
 *System packages*

@@ -16,8 +16,10 @@ def main():
     # Add arguments to the parser
     all_args.add_argument("-db", "--database", required=True,
                         help="Path to the database file /my/path/core.db.tar.gz")
+    all_args.add_argument("-pkg", "--package", required=False,
+                        help="Filename of package to verify e.g: js78-78.15.0-4-x86_64.pkg.tar.zst")
     args = vars(all_args.parse_args())
-    parseDB(Path(args['database']))
+    parseDB(databasePath=Path(args['database']),packageFileName=args['package'])
 
 def verifyPKGFiles(fileArray,databaseName,ignoreVerify):
     availableFiles = {}
@@ -52,7 +54,6 @@ def parsePKGFiles(filePaths,databaseName,ignoreVerify):
     availableFiles = {}
     delFiles = {}
 
-
     x = 0
     for fileArray in filePathSplit:
         x += 1
@@ -73,7 +74,7 @@ def parsePKGFiles(filePaths,databaseName,ignoreVerify):
 
     return (availableFiles,delFiles)
 
-def parseDB(databasePath: Path, ignoreVerify: bool = False):
+def parseDB(databasePath: Path, packageFileName: str ,ignoreVerify: bool = False):
     rootFolder = Path(databasePath.parent)
     databaseName = databasePath.name
 
@@ -83,7 +84,9 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
     keepFiles = {}
     delFiles = {}
 
-    filePaths=sorted(glob.glob(str(rootFolder)+"/*.pkg.tar.*[!.sig]"))
+    packageFileName = packageFileName if packageFileName else "*.pkg.tar.*[!.sig]"
+
+    filePaths=sorted(glob.glob(str(rootFolder)+"/"+packageFileName))
 
     ## Quick verify of database
     databaseReady = False
@@ -122,15 +125,17 @@ def parseDB(databasePath: Path, ignoreVerify: bool = False):
     if databaseReady:
         if Path.exists(databasePath):
             print(databaseName+": Database exists, indexing..")
-            dbFile = tarfile.open(databasePath)
-            for tarinfo in dbFile:
+            databaseArchive = tarfile.open(databasePath)
+            for tarinfo in databaseArchive:
                 if tarinfo.isfile() and tarinfo.name.split('/')[1] == "desc":
-                    descFileContents = dbFile.extractfile(tarinfo).readlines()
+                    descFileContents = databaseArchive.extractfile(tarinfo).readlines()
                     # don't verify because all files that exist in the directory have already been verified
                     tarPackage = Package(pkginfo=descFileContents, database=databaseName, filename="", fullPath=Path(databasePath), ignoreVerify=True)
-                    ## Debug
-                    # if "xmobar" in tarPackage.name:
-                    databaseFiles.append(tarPackage)
+                    if tarPackage.verified:
+                        databaseFiles.append(tarPackage)
+                    else :
+                        print("Failed verification")
+
         else:
             print(databaseName+": Database doesn't exist.")
 
@@ -271,6 +276,11 @@ class Package:
             self.verify()
 
         self.parsePkgInfo(pkginfo, database, filename)
+        self.hasRequiredValues()
+
+    def hasRequiredValues(self):
+        if not hasattr(self,"filename") or not hasattr(self,"name") or not hasattr(self,"version") or not hasattr(self,"builddate") or not hasattr(self,"fullPath"):
+            self.verified = False
 
     def verify(self):
         verifyCommand='pacman-key --verify "'+self.fullPath+'.sig" "'+self.fullPath+'"'

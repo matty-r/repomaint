@@ -48,6 +48,9 @@ def getMirrors(configFile,countryCode):
         if url["protocol"] in enabledProtocols:
             mirrorUrls.append(url)
 
+    # sort by last sync
+    mirrorUrls.sort(reverse=True,key=lambda i: i["last_sync"])
+
     return mirrorUrls
 
 # For each mirror URL returned, we attempt to connect
@@ -73,7 +76,7 @@ def getWorkingMirror(configFile,allRepos):
             mirrorList.append(server["server"])
 
     ## Shuffle the list so we're not always hitting the same server
-    random.shuffle(mirrorList)
+    ##random.shuffle(mirrorList)
 
     mirrorToUse = ""
     mirrorDepth = 0

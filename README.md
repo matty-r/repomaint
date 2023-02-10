@@ -8,6 +8,7 @@ Maintains a local Arch Linux repository mirror.
 - pacserve
 - yay
 - tar
+- openssl-1.1
 
 *Python packages*
 

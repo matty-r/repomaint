@@ -22,7 +22,7 @@ curl.setopt(curl.FOLLOWLOCATION, 1)
 all_args = argparse.ArgumentParser()
 ARCH="x86_64"
 
-print("Version 1.1")
+print("Version 1.2")
 
 # Used to remove/reset the data in the BytesIO() object
 # Otherwise the data is appended to it and you'll need
@@ -45,7 +45,7 @@ def getMirrors(configFile,countryCode):
     mirrorDetails = json.loads(str(b.getvalue(), 'UTF-8'))
     resetBytes()
     for url in [i for i in mirrorDetails['urls'] if i["country_code"] == countryCode and i["active"] == True]:
-        if url["protocol"] in enabledProtocols:
+        if url["protocol"] in enabledProtocols and url["last_sync"]:
             mirrorUrls.append(url)
 
     # sort by last sync

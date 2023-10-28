@@ -172,6 +172,13 @@ def main():
     configFile = json.load(open(args["config"]))
 
     repoRoot = Path(configFile["maint_config"]["repo_root"])
+    doNotify = False
+
+    if configFile:
+        services = configFile["service_config"]["notifiers"]
+        for service in services:
+            if service["notifier"]["enabled"]:
+                doNotify = True
 
     if not repoRoot.exists():
         print(str(repoRoot.resolve()) +" doesn't exist. Check config.json.")
@@ -204,6 +211,10 @@ def main():
 
         while not threadQueue.empty():
             returnObject = threadQueue.get()
+
+            if(not returnObject):
+                continue
+
             # Needs redownload
             if(returnObject["Redownload"]):
                 readyToContinue = False
@@ -217,8 +228,8 @@ def main():
                 removedTotal += returnObject["Deleted Count"]
                 removedPackages += returnObject["Deleted String"]
 
-    if addedTotal > 0:
-        print("New files added - run notify")
+    if(doNotify):
+        print("Run notify")
         scriptPath = Path(sys.argv[0]).parent.resolve()
         notifyCommand = 'python "'+str(scriptPath)+'/repo_notify.py" -c "'+args["config"]+'" -m "'+ addedPackages + ' ' + removedPackages +'"'
         print(notifyCommand)

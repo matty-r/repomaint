@@ -41,7 +41,10 @@ def runNotifier(type: str, message: str):
 def pushOverNotify(message: str):
     thisPath = str(Path(str(Path(sys.argv[0]).parent.parent.resolve())+"/config/notifiers/pushover.json").resolve())
     pushOverJson = json.load(open(thisPath))
-    
+
+    if (len(message) <= 0):
+        message = "No message attached."
+
     c = pycurl.Curl()
     c.setopt(pycurl.URL, 'https://api.pushover.net/1/messages.json')
     c.setopt(pycurl.HTTPHEADER, ['Accept:application/json'])

@@ -107,7 +107,11 @@ def parseDB(databasePath: Path, packageFileName: str ,ignoreVerify: bool = False
 
     # get the start time
     st = time.time()
-    pkgFiles = parsePKGFiles(filePaths,databaseName,ignoreVerify)
+    if len(filePaths) > 0:
+        pkgFiles = parsePKGFiles(filePaths,databaseName,ignoreVerify)
+    else:
+        print('No files to worry about..')
+        return []
     # get the end time
     et = time.time()
 

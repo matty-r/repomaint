@@ -38,7 +38,7 @@ def getMirrors(configFile,countryCode):
     generatorConfig = configFile['mirror_config']["auto"]["generator"]
 
     enabledProtocols = [i for i in generatorConfig["protocols"] if generatorConfig["protocols"][i] == True]
-    mirrorListURL = generatorConfig["mirror_json"]
+    mirrorListURL = generatorConfig["url"]
 
     curl.setopt(curl.URL, mirrorListURL)
     curl.perform()
@@ -73,7 +73,18 @@ def getWorkingMirror(configFile,allRepos):
         mirrorList = getMirrors(configFile,countryCode)
     else:
         for server in configFile['mirror_config']["manual"]["servers"]:
-            mirrorList.append(server["server"])
+            # Extracting the protocol from the server URL
+            protocol = server["server"].split("://")[0]
+
+            # Creating a dictionary for the server with protocol and URL fields
+            server_info = {
+                "protocol": protocol,
+                "url": server["server"],
+                "emptyUrl": server["server"].split("$repo")[0]
+            }
+
+            # Appending the server info dictionary to the mirrorList
+            mirrorList.append(server_info)
 
     ## Shuffle the list so we're not always hitting the same server
     ##random.shuffle(mirrorList)
@@ -85,7 +96,7 @@ def getWorkingMirror(configFile,allRepos):
         for repo,type in allRepos.items():
             # Remote = non-locally hosted (i.e not built AUR packages)
             if type == "remote":
-                if "http" in mirror["protocol"]:
+                if "http" in mirror["protocol"] or "https" in mirror["protocol"]:
                     baseUrl = mirror["url"].replace('$arch',ARCH).replace('$repo',repo)
                     print('Trying '+baseUrl)
                     curl.setopt(curl.URL, baseUrl)
@@ -100,8 +111,8 @@ def getWorkingMirror(configFile,allRepos):
                     if curlResponse != 200:
                         curlResults = False
                         break
-                elif "rsync" in mirror["protocol"]:
-                    rsyncCommand = 'rsync -qlptH --safe-links --delete-delay --delay-updates "--timeout=600" "--contimeout=60" --no-motd '+mirror["url"]
+                else:
+                    rsyncCommand = 'rsync -qlptH --safe-links --delete-delay --delay-updates "--timeout=600" "--contimeout=60" --no-motd '+ mirror["emptyUrl"]
                     proc = subprocess.run(rsyncCommand, shell=True)
                     if proc.returncode != 0:
                         curlResults = False
@@ -109,8 +120,12 @@ def getWorkingMirror(configFile,allRepos):
 
         if curlResults:
             print('Got reponse')
+            if mirror["url"].find("$repo") == -1:
+                print("Append repo/arch string")
+                mirrorToUse = mirror["url"]+'$repo/os/$arch'
+            else:
+                mirrorToUse = mirror["url"]
 
-            mirrorToUse = mirror["url"]+'$repo/os/$arch'
             mirrorDepth = mirror["url"].split("$repo")[0].count('/')-2
             print("Mirror "+mirrorToUse)
             print("Depth "+str(mirrorDepth))
@@ -139,7 +154,8 @@ def runDownloadThreads(repoRoot,mirrorToUse,allRepos):
         else:
             downloadUrl = mirrorToUse["url"].replace('$arch',ARCH).replace('$repo',repo)
             databasePath = Path(repoRoot+'/'+'/'.join(downloadUrl.split('/')[-3:])+'/'+repo+'.db.tar.gz')
-            if "http" in mirrorToUse["protocol"] :
+            databasePath.parent.mkdir(parents=True, exist_ok=True)
+            if "http" in mirrorToUse["protocol"] or "https" in mirrorToUse["protocol"]:
                 runCommand = 'wget2 -e robots=off -N --no-if-modified-since -P "'+repoRoot+'" -nH -m --cut-dirs='+str(mirrorToUse["depth"])+' --no-parent --timeout=3 --accept="*.pkg.tar*" '+downloadUrl
             else:
                 # rsync

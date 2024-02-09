@@ -225,10 +225,13 @@ def parseDB(databasePath: Path, packageFileName: str ,ignoreVerify: bool = False
         if(Path.exists(filePathSig)):
             os.remove(filePathSig)
 
+        print("done")
+
     databaseAddCommand = 'repo-add -q "'+str(databasePath)+'"'
 
     wasRun = False
 
+    print("Building add command..")
     for file in keepFiles.keys():
         fileName = keepFiles[file]
         filePath = Path(str(rootFolder)+"/"+fileName).resolve()
@@ -236,6 +239,7 @@ def parseDB(databasePath: Path, packageFileName: str ,ignoreVerify: bool = False
 
         # here we're batching the command so it's more efficient
         if len(tempCommand) > maxCommandLength:
+            print(databaseName +": Adding files in batch..")
             subprocess.run(databaseAddCommand, shell=True)
             # Restart the databseCommand
             databaseAddCommand = 'repo-add -q "'+str(databasePath)+ '" "'+str(filePath)+'"'
@@ -245,6 +249,7 @@ def parseDB(databasePath: Path, packageFileName: str ,ignoreVerify: bool = False
             wasRun = False
 
     if len(keepFiles) > 0 and not wasRun:
+        print(databaseName +": Adding remaining files in progress..")
         modifyDatabase = subprocess.run(databaseAddCommand, shell=True, universal_newlines=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE).stderr.splitlines()
         if len(modifyDatabase) <= 0:
             print(databaseName+": Adding files successful")
@@ -294,7 +299,7 @@ class Package:
             subprocess.run(verifyCommand, shell=True, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT).check_returncode()
             self.verified = True
         except:
-            print("Failed signature verification.")
+            print("["+self.name +"] Failed signature verification.")
             self.verified = False
 
     def parsePkgInfo(self, pkginfo: list[bytes], database, filename):
@@ -333,7 +338,7 @@ class Package:
             self.fullPath = self.fullPath.replace(database,filename)
             print(database+": Read Package - " + self.name)
         else:
-            print("Incorrect package for sig")
+            print("[" + name + "] Incorrect package for sig")
 
 
 

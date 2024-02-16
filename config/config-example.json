@@ -12,12 +12,12 @@
                     "type": "pushover",
                     "enabled": false,
                     "config": "/config/notifiers/pushover.json"
-                } 
+                }
             },
             { "notifier" : {
                     "type": "email",
                     "enabled": false
-                } 
+                }
             }
         ]
     },
@@ -41,22 +41,19 @@
         },
         "manual": {
             "servers": [
-                { "server": "https://mirror.aarnet.edu.au/pub/archlinux/$repo/os/$arch"},
-                { "server": "http://archlinux.mirror.digitalpacific.com.au/$repo/os/$arch"},
-                { "server": "https://archlinux.mirror.digitalpacific.com.au/$repo/os/$arch"},
-                { "server": "http://ftp.iinet.net.au/pub/archlinux/$repo/os/$arch"},
-                { "server": "http://mirror.internode.on.net/pub/archlinux/$repo/os/$arch"},
-                { "server": "http://mirror.launtel.net.au/repo/arch/$repo/os/$arch"},
-                { "server": "https://mirror.launtel.net.au/repo/arch/$repo/os/$arch"},
-                { "server": "http://arch.lucassymons.net/$repo/os/$arch"},
-                { "server": "https://arch.lucassymons.net/$repo/os/$arch"},
-                { "server": "http://syd.mirror.rackspace.com/archlinux/$repo/os/$arch"},
-                { "server": "https://syd.mirror.rackspace.com/archlinux/$repo/os/$arch"},
-                { "server": "http://ftp.swin.edu.au/archlinux/$repo/os/$arch"}
+                { "server": "rsync://mirror.aarnet.edu.au/pub/archlinux/$repo/os/$arch"},
+                { "server": "rsync://archlinux.mirror.digitalpacific.com.au/$repo/os/$arch"},
+                { "server": "rsync://archlinux.mirror.digitalpacific.com.au/$repo/os/$arch"},
+                { "server": "rsync://ftp.iinet.net.au/pub/archlinux/$repo/os/$arch"},
+                { "server": "rsync://mirror.internode.on.net/pub/archlinux/$repo/os/$arch"},
+                { "server": "rsync://mirror.launtel.net.au/repo/arch/$repo/os/$arch"},
+                { "server": "rsync://mirror.launtel.net.au/repo/arch/$repo/os/$arch"},
+                { "server": "rsync://arch.lucassymons.net/$repo/os/$arch"},
+                { "server": "rsync://arch.lucassymons.net/$repo/os/$arch"},
+                { "server": "rsync://syd.mirror.rackspace.com/archlinux/$repo/os/$arch"},
+                { "server": "rsync://syd.mirror.rackspace.com/archlinux/$repo/os/$arch"},
+                { "server": "rsync://ftp.swin.edu.au/archlinux/$repo/os/$arch"}
             ]
         }
     }
 }
-
-
-

@@ -4,13 +4,21 @@ Maintains a local Arch Linux repository mirror.
 ## Prerequisites
 *System packages*
 
-- wget2
-- pacserve
-- yay
 - tar
 - openssl-1.1
 
+*AUR Packages*
+
+- wget2
+- pacserve
+- yay
+
 *Python packages*
+
+- python
+- python-pip
+- python-pycurl
+- python-numpy
 
 *Permissions*
 
